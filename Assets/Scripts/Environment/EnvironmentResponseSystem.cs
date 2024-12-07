@@ -1,10 +1,10 @@
 using UnityEngine;
 using System.Collections.Generic;
 using Forever.VFX;
-using Forever.AI;
+using Forever.Audio;
+using Forever.Interactables;
 using Forever.Core;
 using Forever.Rendering;
-using Forever.Audio;
 
 namespace Forever.Environment
 {
@@ -28,14 +28,14 @@ namespace Forever.Environment
         public AudioClip[] magicResponseSounds;
         public float minPitchVariation = 0.9f;
         public float maxPitchVariation = 1.1f;
-        
-        private Dictionary<Transform, float> activeResponses;
-        private List<MagicalNode> magicNodes;
+
+        private Dictionary<Transform, float> activeResponses = new Dictionary<Transform, float>();
+        private List<MagicalNode> magicNodes = new List<MagicalNode>();
         private WeatherSystem weatherSystem;
         private ShaderManager shaderManager;
         private ParticleSystemManager vfxManager;
         private AudioManager audioManager;
-        
+
         private void Awake()
         {
             if (Instance == null)
@@ -48,12 +48,9 @@ namespace Forever.Environment
                 Destroy(gameObject);
             }
         }
-        
+
         private void InitializeSystems()
         {
-            activeResponses = new Dictionary<Transform, float>();
-            magicNodes = new List<MagicalNode>();
-            
             // Get references to required systems
             weatherSystem = FindObjectOfType<WeatherSystem>();
             shaderManager = FindObjectOfType<ShaderManager>();
@@ -69,13 +66,13 @@ namespace Forever.Environment
                 environmentalAudioSource.maxDistance = responseRadius * 2f;
             }
         }
-        
+
         private void Update()
         {
             UpdateActiveResponses();
             UpdateMagicNodes();
         }
-        
+
         private void UpdateActiveResponses()
         {
             List<Transform> completedResponses = new List<Transform>();
@@ -100,15 +97,37 @@ namespace Forever.Environment
                 activeResponses.Remove(completed);
             }
         }
-        
+
         private void UpdateMagicNodes()
         {
             foreach (var node in magicNodes)
             {
-                node.UpdateNode();
+                node.UpdateNode(Time.deltaTime);
             }
         }
-        
+
+        private void UpdateEnvironmentalEffects(Transform target, float intensity)
+        {
+            // Update particle effects
+            if (vfxManager != null)
+            {
+                vfxManager.UpdateEffectIntensity(target, intensity * vfxIntensityMultiplier);
+            }
+
+            // Update shaders
+            if (shaderManager != null)
+            {
+                shaderManager.UpdateMagicInteraction(target.position, intensity);
+            }
+
+            // Update magical plants
+            MagicalPlant plant = target.GetComponent<MagicalPlant>();
+            if (plant != null)
+            {
+                plant.ReceiveEnergy(intensity * Time.deltaTime * 10f);
+            }
+        }
+
         public void TriggerResponse(Vector3 position, float intensity, ResponseType type)
         {
             // Find all responsive objects in range
@@ -119,7 +138,6 @@ namespace Forever.Environment
                 float distance = Vector3.Distance(position, obj.transform.position);
                 float scaledIntensity = intensity * (1 - (distance / responseRadius));
                 
-                // Add or update response
                 if (scaledIntensity > 0)
                 {
                     if (activeResponses.ContainsKey(obj.transform))
@@ -131,46 +149,36 @@ namespace Forever.Environment
                         activeResponses.Add(obj.transform, scaledIntensity);
                     }
                     
-                    // Trigger specific responses based on type
                     HandleSpecificResponse(obj, scaledIntensity, type);
                 }
             }
             
-            // Trigger visual and audio effects
             SpawnResponseEffects(position, intensity, type);
             
-            // Notify weather system
             if (weatherSystem != null)
             {
                 weatherSystem.OnMagicalDisturbance(position, intensity);
             }
         }
-        
+
         private void HandleSpecificResponse(Collider obj, float intensity, ResponseType type)
         {
-            // Check for different types of responsive objects
             MagicalPlant plant = obj.GetComponent<MagicalPlant>();
             if (plant != null)
             {
                 plant.ReceiveEnergy(intensity);
             }
-            
-            MagicalCreature creature = obj.GetComponent<MagicalCreature>();
-            if (creature != null)
-            {
-                creature.ReactToMagic(obj.transform.position, intensity);
-            }
-            
+
             // Update shader properties
             if (shaderManager != null)
             {
                 shaderManager.UpdateMagicInteraction(obj.transform.position, intensity);
             }
         }
-        
+
         private void SpawnResponseEffects(Vector3 position, float intensity, ResponseType type)
         {
-            // Spawn propagation VFX
+            // Spawn VFX
             if (magicPropagationVFX != null)
             {
                 ParticleSystem vfx = Instantiate(magicPropagationVFX, position, Quaternion.identity);
@@ -183,33 +191,33 @@ namespace Forever.Environment
                 
                 if (vfxManager != null)
                 {
-                    vfxManager.RegisterEffect(vfx);
+                    vfxManager.RegisterEffect(vfx, intensity);
                 }
             }
-            
-            // Update environmental aura
+
+            // Update aura
             if (environmentalAura != null)
             {
                 environmentalAura.SetIntensity(intensity);
                 environmentalAura.transform.position = position;
             }
-            
-            // Play response sound
+
+            // Play sound
             if (magicResponseSounds != null && magicResponseSounds.Length > 0)
             {
                 AudioClip clip = magicResponseSounds[Random.Range(0, magicResponseSounds.Length)];
                 if (audioManager != null)
                 {
-                    audioManager.PlaySoundAtPosition(clip, position, intensity);
+                    audioManager.PlaySound(clip.name, intensity);
                 }
-                else
+                else if (environmentalAudioSource != null)
                 {
                     environmentalAudioSource.pitch = Random.Range(minPitchVariation, maxPitchVariation);
                     environmentalAudioSource.PlayOneShot(clip, intensity);
                 }
             }
         }
-        
+
         public void RegisterMagicNode(MagicalNode node)
         {
             if (!magicNodes.Contains(node))
@@ -217,28 +225,32 @@ namespace Forever.Environment
                 magicNodes.Add(node);
             }
         }
-        
+
         public void UnregisterMagicNode(MagicalNode node)
         {
             magicNodes.Remove(node);
         }
-        
+
         public float GetResponseIntensity(Transform target)
         {
-            float intensity;
-            return activeResponses.TryGetValue(target, out intensity) ? intensity : 0f;
+            return activeResponses.TryGetValue(target, out float intensity) ? intensity : 0f;
         }
-        
+
         private void OnDrawGizmosSelected()
         {
             Gizmos.color = Color.magenta;
-            foreach (var response in activeResponses)
+            Gizmos.DrawWireSphere(transform.position, responseRadius);
+            
+            if (Application.isPlaying)
             {
-                Gizmos.DrawWireSphere(response.Key.position, response.Value * responseRadius);
+                foreach (var response in activeResponses)
+                {
+                    Gizmos.DrawWireSphere(response.Key.position, response.Value * responseRadius);
+                }
             }
         }
     }
-    
+
     public enum ResponseType
     {
         Magic,
@@ -248,7 +260,7 @@ namespace Forever.Environment
         Water,
         Wind
     }
-    
+
     [System.Serializable]
     public class MagicalNode
     {
@@ -259,17 +271,17 @@ namespace Forever.Environment
         public float regenerationRate;
         public float transferRadius;
         public LayerMask transferMask;
-        
+
         private float lastUpdateTime;
-        
-        public void UpdateNode()
+
+        public void UpdateNode(float deltaTime)
         {
             // Regenerate energy
             if (currentEnergy < energyCapacity)
             {
-                currentEnergy = Mathf.Min(energyCapacity, currentEnergy + (regenerationRate * Time.deltaTime));
+                currentEnergy = Mathf.Min(energyCapacity, currentEnergy + (regenerationRate * deltaTime));
             }
-            
+
             // Transfer energy to nearby nodes
             if (Time.time - lastUpdateTime >= 1f)
             {
@@ -277,20 +289,20 @@ namespace Forever.Environment
                 lastUpdateTime = Time.time;
             }
         }
-        
+
         private void TransferEnergy()
         {
             if (currentEnergy <= 0) return;
-            
+
             Collider[] nearbyNodes = Physics.OverlapSphere(transform.position, transferRadius, transferMask);
             if (nearbyNodes.Length <= 1) return;
-            
+
             float energyPerNode = (currentEnergy * 0.1f) / (nearbyNodes.Length - 1);
-            
+
             foreach (var other in nearbyNodes)
             {
                 if (other.transform == transform) continue;
-                
+
                 MagicalNode otherNode = other.GetComponent<MagicalNode>();
                 if (otherNode != null && otherNode.currentEnergy < otherNode.energyCapacity)
                 {

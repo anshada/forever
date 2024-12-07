@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using Forever.Environment;
 using Forever.AI;
 using Forever.Characters;
+using Forever.UI;
+using Forever.Audio;
 
 namespace Forever.Core
 {
@@ -40,7 +42,7 @@ namespace Forever.Core
             if (Instance == null)
             {
                 Instance = this;
-                InitializeSystem();
+                DontDestroyOnLoad(gameObject);
             }
             else
             {
@@ -360,6 +362,42 @@ namespace Forever.Core
             
             // Play failure sound
             AudioManager.Instance?.PlayEventSound(eventData.failureSound);
+        }
+
+        public void TriggerEvent(string eventId)
+        {
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.ShowEventNotification(eventId);
+            }
+
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.PlayUISound(UISoundType.NotificationShow);
+            }
+
+            SaveEventState(eventId);
+        }
+
+        private void SaveEventState(string eventId)
+        {
+            if (SaveSystem.Instance != null)
+            {
+                SaveSystem.Instance.SaveData($"Event_{eventId}", true);
+            }
+        }
+
+        public void CompleteEvent(string eventId)
+        {
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.ShowEventCompletion(eventId);
+            }
+
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.PlayUISound(UISoundType.Success);
+            }
         }
     }
     

@@ -264,7 +264,7 @@ namespace Forever.Core
                         break;
                         
                     case DialogueActionType.TriggerEvent:
-                        gameManager?.TriggerGameEvent(action.parameter);
+                        TriggerGameEvent(action.parameter);
                         break;
                 }
             }
@@ -336,23 +336,57 @@ namespace Forever.Core
             switch (effectType)
             {
                 case DialogueEffectType.Start:
-                    if (dialogueStart != null)
-                        audioManager.PlaySound(dialogueStart);
+                    AudioManager.Instance?.PlayUISound(UISoundType.DialogueStart);
                     break;
                     
                 case DialogueEffectType.End:
-                    if (dialogueEnd != null)
-                        audioManager.PlaySound(dialogueEnd);
+                    AudioManager.Instance?.PlayUISound(UISoundType.DialogueEnd);
                     break;
                     
-                case DialogueEffectType.Typing:
-                    if (typingSounds != null && typingSounds.Length > 0)
-                    {
-                        AudioClip clip = typingSounds[UnityEngine.Random.Range(0, typingSounds.Length)];
-                        audioManager.PlaySound(clip, 0.5f);
-                    }
+                case DialogueEffectType.Choice:
+                    AudioManager.Instance?.PlayUISound(UISoundType.DialogueChoice);
                     break;
             }
+        }
+        
+        private void PlayDialogueSound(AudioClip clip)
+        {
+            if (clip != null && AudioManager.Instance != null)
+            {
+                // Use clip name as identifier
+                AudioManager.Instance.PlaySound(clip.name);
+            }
+        }
+        
+        private void TriggerGameEvent(string eventId)
+        {
+            if (DynamicEventsManager.Instance != null)
+            {
+                DynamicEventsManager.Instance.TriggerEvent(eventId);
+            }
+        }
+        
+        private void PlayDialogueAudio(AudioClip clip)
+        {
+            if (clip != null)
+            {
+                AudioManager.Instance?.PlayDialogueSound(clip);
+            }
+        }
+        
+        private void ExecuteDialogueAction(DialogueAction action)
+        {
+            if (action != null)
+            {
+                // Convert action to appropriate type or handle directly
+                action.Execute();
+            }
+        }
+        
+        public bool CheckCondition(string condition)
+        {
+            // Add condition checking logic here
+            return true; // Default to true if no specific condition
         }
     }
     
@@ -381,15 +415,19 @@ namespace Forever.Core
     public class DialogueChoice
     {
         public string text;
-        public DialogueNode nextNode;
-        public DialogueAction[] consequences;
+        public string condition;
+        public bool requiresCondition;
+        
+        // Add any other necessary properties
     }
     
     [System.Serializable]
     public class DialogueAction
     {
-        public DialogueActionType type;
-        public string parameter;
+        public virtual void Execute()
+        {
+            // Base implementation
+        }
     }
     
     public enum EmotionType
@@ -413,6 +451,6 @@ namespace Forever.Core
     {
         Start,
         End,
-        Typing
+        Choice
     }
 } 

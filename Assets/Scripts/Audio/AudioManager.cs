@@ -198,6 +198,27 @@ namespace Forever.Audio
             }
         }
         
+        public void PlayEventSound(AudioClip clip)
+        {
+            if (clip != null)
+            {
+                PlaySound(clip.name);
+            }
+        }
+
+        public void PlayEventSound(string clipName)
+        {
+            PlaySound(clipName, 1f);
+        }
+
+        public void PlayEventSound(AudioClip clip, float volume)
+        {
+            if (clip != null)
+            {
+                PlaySound(clip.name, volume);
+            }
+        }
+        
         private void OnDestroy()
         {
             if (Instance == this)

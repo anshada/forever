@@ -1,7 +1,7 @@
 using UnityEngine;
 using System;
 using System.Collections.Generic;
-using Forever.Characters;
+using System.Linq;
 using Forever.UI;
 
 namespace Forever.Core
@@ -19,23 +19,24 @@ namespace Forever.Core
         public Quest[] mainQuests;
         public Quest[] sideQuests;
         public Quest[] dailyQuests;
-        
-        private Dictionary<string, QuestState> questStates;
-        private List<Quest> activeQuests;
-        private SaveSystem saveSystem;
-        private GameManager gameManager;
-        private UIManager uiManager;
-        
+
         public event Action<Quest> OnQuestStarted;
         public event Action<Quest> OnQuestCompleted;
         public event Action<Quest> OnQuestFailed;
         public event Action<Quest, float> OnQuestProgress;
-        
+
+        private Dictionary<string, QuestState> questStates = new Dictionary<string, QuestState>();
+        private List<Quest> activeQuests = new List<Quest>();
+        private SaveSystem saveSystem;
+        private GameManager gameManager;
+        private UIManager uiManager;
+
         private void Awake()
         {
             if (Instance == null)
             {
                 Instance = this;
+                DontDestroyOnLoad(gameObject);
                 InitializeSystem();
             }
             else
@@ -43,12 +44,9 @@ namespace Forever.Core
                 Destroy(gameObject);
             }
         }
-        
+
         private void InitializeSystem()
         {
-            questStates = new Dictionary<string, QuestState>();
-            activeQuests = new List<Quest>();
-            
             // Get system references
             saveSystem = FindObjectOfType<SaveSystem>();
             gameManager = FindObjectOfType<GameManager>();
@@ -58,202 +56,192 @@ namespace Forever.Core
             InitializeQuestStates();
             
             // Start quest update routine
-            InvokeRepeating("UpdateQuests", questUpdateInterval, questUpdateInterval);
+            InvokeRepeating(nameof(UpdateQuests), questUpdateInterval, questUpdateInterval);
         }
-        
+
         private void InitializeQuestStates()
         {
-            // Initialize main quests
-            foreach (var quest in mainQuests)
-            {
-                questStates[quest.questId] = new QuestState
-                {
-                    isUnlocked = quest.isAvailableFromStart,
-                    isCompleted = false,
-                    isActive = false,
-                    objectives = new Dictionary<string, float>()
-                };
-                
-                foreach (var objective in quest.objectives)
-                {
-                    questStates[quest.questId].objectives[objective.objectiveId] = 0f;
-                }
-            }
-            
-            // Initialize side quests
-            foreach (var quest in sideQuests)
-            {
-                questStates[quest.questId] = new QuestState
-                {
-                    isUnlocked = quest.isAvailableFromStart,
-                    isCompleted = false,
-                    isActive = false,
-                    objectives = new Dictionary<string, float>()
-                };
-                
-                foreach (var objective in quest.objectives)
-                {
-                    questStates[quest.questId].objectives[objective.objectiveId] = 0f;
-                }
-            }
-            
+            InitializeQuestArray(mainQuests);
+            InitializeQuestArray(sideQuests);
+            InitializeQuestArray(dailyQuests);
+
             // Load saved quest states
-            if (saveSystem != null)
+            LoadQuestStates();
+        }
+
+        private void InitializeQuestArray(Quest[] quests)
+        {
+            if (quests == null) return;
+            
+            foreach (var quest in quests)
             {
-                LoadQuestStates();
+                questStates[quest.questId] = new QuestState
+                {
+                    isUnlocked = quest.isAvailableFromStart,
+                    isCompleted = false,
+                    isActive = false,
+                    objectives = new Dictionary<string, float>()
+                };
+                
+                foreach (var objective in quest.objectives)
+                {
+                    questStates[quest.questId].objectives[objective.objectiveId] = 0f;
+                }
             }
         }
-        
+
         private void LoadQuestStates()
         {
-            // TODO: Implement loading quest states from save system
-        }
-        
-        private void UpdateQuests()
-        {
-            foreach (var quest in activeQuests)
+            if (saveSystem == null) return;
+
+            var savedData = saveSystem.GetSavedData<QuestSaveData>("QuestData");
+            if (savedData != null)
             {
-                UpdateQuestProgress(quest);
+                foreach (var questId in savedData.activeQuestIds)
+                {
+                    var quest = FindQuest(questId);
+                    if (quest != null)
+                    {
+                        activeQuests.Add(quest);
+                        questStates[questId].isActive = true;
+                    }
+                }
+
+                foreach (var questId in savedData.completedQuestIds)
+                {
+                    if (questStates.ContainsKey(questId))
+                    {
+                        questStates[questId].isCompleted = true;
+                    }
+                }
+
+                foreach (var progress in savedData.questProgress)
+                {
+                    if (questStates.ContainsKey(progress.Key))
+                    {
+                        UpdateQuestProgress(progress.Key, progress.Value);
+                    }
+                }
             }
         }
-        
+
+        private void UpdateQuests()
+        {
+            foreach (var quest in activeQuests.ToArray())
+            {
+                UpdateQuestObjectives(quest);
+            }
+        }
+
+        private void UpdateQuestObjectives(Quest quest)
+        {
+            if (!questStates.ContainsKey(quest.questId)) return;
+
+            var state = questStates[quest.questId];
+            float totalProgress = CalculateQuestProgress(quest);
+            OnQuestProgress?.Invoke(quest, totalProgress);
+
+            if (totalProgress >= 1f)
+            {
+                CompleteQuest(quest);
+            }
+        }
+
         public void StartQuest(string questId)
         {
             Quest quest = FindQuest(questId);
-            if (quest == null || !CanStartQuest(quest))
-                return;
-                
-            // Add to active quests
+            if (quest == null || !CanStartQuest(quest)) return;
+
             if (activeQuests.Count >= maxActiveQuests)
             {
                 Debug.LogWarning($"Cannot start quest {questId}: Maximum active quests reached");
                 return;
             }
-            
+
             activeQuests.Add(quest);
             questStates[questId].isActive = true;
-            
-            // Initialize objectives
-            foreach (var objective in quest.objectives)
-            {
-                questStates[questId].objectives[objective.objectiveId] = 0f;
-            }
-            
-            // Notify systems
             OnQuestStarted?.Invoke(quest);
-            uiManager?.ShowQuestStarted(quest);
-            
-            // Spawn quest-specific elements
-            SpawnQuestElements(quest);
+            SaveQuestData();
         }
-        
+
         private bool CanStartQuest(Quest quest)
         {
             if (quest == null) return false;
-            
+
             QuestState state = questStates[quest.questId];
             if (state.isCompleted || state.isActive) return false;
-            
+
             // Check prerequisites
             foreach (string prereq in quest.prerequisites)
             {
                 if (!questStates.ContainsKey(prereq) || !questStates[prereq].isCompleted)
                     return false;
             }
-            
+
             // Check level requirement
-            if (gameManager != null && gameManager.PlayerLevel < quest.requiredLevel)
+            if (gameManager != null && gameManager.playerLevel < quest.requiredLevel)
                 return false;
-                
+
             return true;
         }
-        
-        private void SpawnQuestElements(Quest quest)
+
+        public void UpdateQuestProgress(string questId, string objectiveId, float progress)
         {
-            foreach (var element in quest.questElements)
-            {
-                if (element.prefab != null)
-                {
-                    Vector3 spawnPos = GetValidSpawnPosition(element.spawnRadius);
-                    if (spawnPos != Vector3.zero)
-                    {
-                        GameObject spawned = Instantiate(element.prefab, spawnPos, Quaternion.identity);
-                        spawned.name = $"{quest.questId}_{element.elementId}";
-                    }
-                }
-            }
-        }
-        
-        private Vector3 GetValidSpawnPosition(float radius)
-        {
-            // TODO: Implement proper spawn position validation using NavMesh
-            return transform.position + UnityEngine.Random.insideUnitSphere * radius;
-        }
-        
-        public void UpdateObjectiveProgress(string questId, string objectiveId, float progress)
-        {
-            if (!questStates.ContainsKey(questId))
-                return;
-                
+            if (!questStates.ContainsKey(questId)) return;
+
             QuestState state = questStates[questId];
-            if (!state.isActive || !state.objectives.ContainsKey(objectiveId))
-                return;
-                
+            if (!state.isActive || !state.objectives.ContainsKey(objectiveId)) return;
+
             state.objectives[objectiveId] = Mathf.Clamp01(progress);
-            
             Quest quest = FindQuest(questId);
+            
             if (quest != null)
             {
                 float totalProgress = CalculateQuestProgress(quest);
                 OnQuestProgress?.Invoke(quest, totalProgress);
-                
+
                 if (totalProgress >= 1f)
                 {
                     CompleteQuest(quest);
                 }
             }
         }
-        
+
         private float CalculateQuestProgress(Quest quest)
         {
-            if (!questStates.ContainsKey(quest.questId))
-                return 0f;
-                
+            if (!questStates.ContainsKey(quest.questId)) return 0f;
+
             QuestState state = questStates[quest.questId];
             float totalProgress = 0f;
-            
+            float totalWeight = 0f;
+
             foreach (var objective in quest.objectives)
             {
                 if (state.objectives.ContainsKey(objective.objectiveId))
                 {
                     totalProgress += state.objectives[objective.objectiveId] * objective.weight;
+                    totalWeight += objective.weight;
                 }
             }
-            
-            return totalProgress / quest.objectives.Length;
+
+            return totalWeight > 0 ? totalProgress / totalWeight : 0f;
         }
-        
+
         private void CompleteQuest(Quest quest)
         {
-            if (!questStates.ContainsKey(quest.questId))
-                return;
-                
+            if (!questStates.ContainsKey(quest.questId)) return;
+
             QuestState state = questStates[quest.questId];
             state.isCompleted = true;
             state.isActive = false;
-            
-            // Remove from active quests
             activeQuests.Remove(quest);
-            
+
             // Grant rewards
-            if (gameManager != null)
+            foreach (var reward in quest.rewards)
             {
-                foreach (var reward in quest.rewards)
-                {
-                    // TODO: Implement reward system
-                }
+                GrantReward(reward);
             }
-            
+
             // Unlock dependent quests
             foreach (string unlockedQuest in quest.unlockedQuests)
             {
@@ -262,58 +250,70 @@ namespace Forever.Core
                     questStates[unlockedQuest].isUnlocked = true;
                 }
             }
-            
-            // Notify systems
+
             OnQuestCompleted?.Invoke(quest);
-            uiManager?.ShowQuestCompleted(quest);
-            
-            // Save progress
-            if (saveSystem != null)
+            SaveQuestData();
+        }
+
+        private void GrantReward(QuestReward reward)
+        {
+            switch (reward.type)
             {
-                saveSystem.SaveQuestState(quest.questId, true);
+                case RewardType.Experience:
+                    gameManager?.GainExperience((int)reward.value);
+                    break;
+                case RewardType.Item:
+                    // Handle item rewards through inventory system
+                    break;
+                case RewardType.Currency:
+                    gameManager?.GainCurrency((int)reward.value);
+                    break;
             }
         }
-        
+
         private Quest FindQuest(string questId)
         {
             foreach (var quest in mainQuests)
                 if (quest.questId == questId) return quest;
-                
+
             foreach (var quest in sideQuests)
                 if (quest.questId == questId) return quest;
-                
+
             foreach (var quest in dailyQuests)
                 if (quest.questId == questId) return quest;
-                
+
             return null;
         }
-        
+
+        public List<Quest> GetActiveQuests()
+        {
+            return activeQuests;
+        }
+
+        private void SaveQuestData()
+        {
+            if (saveSystem == null) return;
+
+            var completedQuestIds = questStates.Keys.ToList().Where(id => questStates[id].isCompleted);
+            var questProgressDict = questStates.ToDictionary(
+                kvp => kvp.Key,
+                kvp => CalculateQuestProgress(FindQuest(kvp.Key))
+            );
+
+            saveSystem.SaveData("QuestData", new QuestSaveData
+            {
+                activeQuestIds = activeQuests.ConvertAll(q => q.questId),
+                completedQuestIds = completedQuestIds.ToList(),
+                questProgress = questProgressDict
+            });
+        }
+
         public QuestState GetQuestState(string questId)
         {
-            QuestState state;
-            return questStates.TryGetValue(questId, out state) ? state : null;
-        }
-        
-        public Quest[] GetAvailableQuests()
-        {
-            List<Quest> available = new List<Quest>();
-            
-            foreach (var pair in questStates)
-            {
-                if (pair.Value.isUnlocked && !pair.Value.isCompleted && !pair.Value.isActive)
-                {
-                    Quest quest = FindQuest(pair.Key);
-                    if (quest != null && CanStartQuest(quest))
-                    {
-                        available.Add(quest);
-                    }
-                }
-            }
-            
-            return available.ToArray();
+            return questStates.TryGetValue(questId, out var state) ? state : null;
         }
     }
-    
+
     [System.Serializable]
     public class Quest
     {
@@ -329,7 +329,7 @@ namespace Forever.Core
         public QuestReward[] rewards;
         public QuestElement[] questElements;
     }
-    
+
     [System.Serializable]
     public class QuestObjective
     {
@@ -341,16 +341,17 @@ namespace Forever.Core
         public bool isOptional;
         public string[] requiredItems;
     }
-    
+
     [System.Serializable]
     public class QuestReward
     {
         public RewardType type;
         public string rewardId;
         public float value;
+        public string description;
         public GameObject rewardPrefab;
     }
-    
+
     [System.Serializable]
     public class QuestElement
     {
@@ -359,7 +360,7 @@ namespace Forever.Core
         public float spawnRadius;
         public bool despawnOnComplete;
     }
-    
+
     public class QuestState
     {
         public bool isUnlocked;
@@ -367,7 +368,7 @@ namespace Forever.Core
         public bool isActive;
         public Dictionary<string, float> objectives;
     }
-    
+
     public enum QuestType
     {
         Main,
@@ -375,7 +376,7 @@ namespace Forever.Core
         Daily,
         Hidden
     }
-    
+
     public enum ObjectiveType
     {
         Collect,
@@ -386,7 +387,7 @@ namespace Forever.Core
         Escort,
         Solve
     }
-    
+
     public enum RewardType
     {
         Experience,
@@ -394,5 +395,13 @@ namespace Forever.Core
         Ability,
         Currency,
         Reputation
+    }
+
+    [System.Serializable]
+    public class QuestSaveData
+    {
+        public List<string> activeQuestIds;
+        public List<string> completedQuestIds;
+        public Dictionary<string, float> questProgress;
     }
 } 

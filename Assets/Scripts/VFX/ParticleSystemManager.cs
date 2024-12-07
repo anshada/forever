@@ -44,7 +44,8 @@ namespace Forever.VFX
 
         private Dictionary<string, Queue<GameObject>> particlePool;
         private Dictionary<string, ParticleEffectPreset> effectPresets;
-        private List<ParticleSystem> activeEffects;
+        private List<ParticleSystem> activeEffects = new List<ParticleSystem>();
+        private Dictionary<Transform, float> effectIntensities = new Dictionary<Transform, float>();
         private Transform poolContainer;
 
         private void Awake()
@@ -304,9 +305,89 @@ namespace Forever.VFX
             return null;
         }
 
+        public void RegisterEffect(ParticleSystem effect, float intensity)
+        {
+            if (effect != null && effect.transform != null)
+            {
+                effect.transform.SetParent(poolContainer);
+                activeEffects.Add(effect);
+                effectIntensities[effect.transform] = intensity;
+            }
+        }
+
+        public void UpdateEffectIntensity(Transform target, float intensity)
+        {
+            if (effectIntensities.ContainsKey(target))
+            {
+                effectIntensities[target] = intensity;
+                var effect = activeEffects.Find(e => e.transform == target);
+                if (effect != null)
+                {
+                    var emission = effect.emission;
+                    emission.rateOverTime = intensity * 100f; // Base rate multiplied by intensity
+                }
+            }
+        }
+
+        public void UnregisterEffect(Transform target)
+        {
+            var effect = activeEffects.Find(e => e.transform == target);
+            if (effect != null)
+            {
+                activeEffects.Remove(effect);
+                effectIntensities.Remove(target);
+                Destroy(effect.gameObject);
+            }
+        }
+
+        private void Update()
+        {
+            for (int i = activeEffects.Count - 1; i >= 0; i--)
+            {
+                var effect = activeEffects[i];
+                if (effect != null && effectIntensities.TryGetValue(effect.transform, out float intensity))
+                {
+                    var emission = effect.emission;
+                    emission.rateOverTime = intensity * 100f;
+                }
+                else if (effect == null)
+                {
+                    activeEffects.RemoveAt(i);
+                }
+            }
+        }
+
         private void OnDestroy()
         {
             StopAllEffects(true);
+            if (poolContainer != null)
+            {
+                Destroy(poolContainer.gameObject);
+            }
+        }
+
+        // Keep any existing methods for backward compatibility
+        public ParticleSystem GetEffect(string effectName)
+        {
+            return activeEffects.Find(e => e.name == effectName);
+        }
+
+        public void PlayEffect(string effectName)
+        {
+            var effect = GetEffect(effectName);
+            if (effect != null)
+            {
+                effect.Play();
+            }
+        }
+
+        public void StopEffect(string effectName)
+        {
+            var effect = GetEffect(effectName);
+            if (effect != null)
+            {
+                effect.Stop();
+            }
         }
     }
 } 

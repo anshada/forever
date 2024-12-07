@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using Forever.Characters;
+using Forever.Environment;
 
 namespace Forever.VFX
 {
@@ -82,6 +83,12 @@ namespace Forever.VFX
         {
             // Initialize all particle systems in stopped state
             StopAllEffects();
+            
+            // Ensure environmentVFX is properly initialized
+            if (environmentVFX == null)
+            {
+                environmentVFX = new EnvironmentalVFX();
+            }
         }
         
         public void StopAllEffects()
@@ -92,10 +99,13 @@ namespace Forever.VFX
             if (windParticles) windParticles.Stop();
             if (magicalSparkles) magicalSparkles.Stop();
             
-            StopArrayEffects(fireflies);
-            StopArrayEffects(floatingSpores);
-            StopArrayEffects(magicalWisps);
-            StopArrayEffects(glowingMushrooms);
+            if (environmentVFX != null)
+            {
+                StopArrayEffects(environmentVFX.fireflies);
+                StopArrayEffects(environmentVFX.floatingSpores);
+                StopArrayEffects(environmentVFX.magicalWisps);
+                StopArrayEffects(environmentVFX.glowingMushrooms);
+            }
         }
         
         private void StopArrayEffects(ParticleSystem[] effects)
@@ -161,10 +171,13 @@ namespace Forever.VFX
         
         public void SetEnvironmentEffects(bool enabled, float intensity = 1f)
         {
-            SetArrayEffects(fireflies, enabled, intensity);
-            SetArrayEffects(floatingSpores, enabled, intensity);
-            SetArrayEffects(magicalWisps, enabled, intensity);
-            SetArrayEffects(glowingMushrooms, enabled, intensity);
+            if (environmentVFX != null)
+            {
+                SetArrayEffects(environmentVFX.fireflies, enabled, intensity);
+                SetArrayEffects(environmentVFX.floatingSpores, enabled, intensity);
+                SetArrayEffects(environmentVFX.magicalWisps, enabled, intensity);
+                SetArrayEffects(environmentVFX.glowingMushrooms, enabled, intensity);
+            }
         }
         
         private void SetArrayEffects(ParticleSystem[] effects, bool enabled, float intensity)
@@ -206,14 +219,5 @@ namespace Forever.VFX
                 Instance = null;
             }
         }
-    }
-    
-    public enum WeatherType
-    {
-        Clear,
-        Rain,
-        Snow,
-        Fog,
-        Wind
     }
 } 

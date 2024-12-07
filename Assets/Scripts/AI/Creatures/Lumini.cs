@@ -1,6 +1,8 @@
 using UnityEngine;
 using System.Collections;
 using Forever.VFX;
+using Forever.Audio;
+using Forever.Interactables;
 
 namespace Forever.AI.Creatures
 {

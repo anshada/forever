@@ -6,6 +6,8 @@ using System.Collections;
 using Forever.Core;
 using Forever.Characters;
 using Forever.Audio;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Forever.UI
 {
@@ -36,8 +38,8 @@ namespace Forever.UI
         [Header("Dialogue UI")]
         public TextMeshProUGUI dialogueText;
         public TextMeshProUGUI speakerNameText;
-        public GameObject choicesPanel;
-        public DialogueChoiceButton choiceButtonPrefab;
+        public GameObject choicesContainer;
+        public DialogueChoiceButton dialogueChoiceButtonPrefab;
         public Image speakerPortrait;
         public Image listenerPortrait;
         
@@ -259,53 +261,25 @@ namespace Forever.UI
         
         #region Dialogue UI
         
-        public void ShowDialogueUI(bool show)
+        public void ShowDialoguePanel(bool show)
         {
             ShowPanel(dialoguePanel, show);
         }
         
-        public void ShowDialogueText(string text, string speakerName)
+        public void UpdateDialogueText(string text)
         {
-            if (typingCoroutine != null)
-            {
-                StopCoroutine(typingCoroutine);
-            }
-            
             if (dialogueText != null)
             {
-                typingCoroutine = StartCoroutine(TypeText(text));
+                dialogueText.text = text;
             }
-            
-            if (speakerNameText != null)
-            {
-                speakerNameText.text = speakerName;
-            }
-        }
-        
-        private IEnumerator TypeText(string text)
-        {
-            isTyping = true;
-            dialogueText.text = "";
-            
-            foreach (char c in text)
-            {
-                dialogueText.text += c;
-                if (c != ' ' && dialogueSystem != null)
-                {
-                    dialogueSystem.PlayDialogueEffects(DialogueEffectType.Typing);
-                }
-                yield return new WaitForSeconds(dialogueSystem.typingSpeed);
-            }
-            
-            isTyping = false;
         }
         
         public void ShowDialogueChoices(DialogueChoice[] choices)
         {
-            if (choicesPanel == null || choiceButtonPrefab == null) return;
+            if (choicesContainer == null || dialogueChoiceButtonPrefab == null) return;
             
             // Clear existing choices
-            foreach (Transform child in choicesPanel.transform)
+            foreach (Transform child in choicesContainer.transform)
             {
                 Destroy(child.gameObject);
             }
@@ -313,11 +287,11 @@ namespace Forever.UI
             // Create new choice buttons
             for (int i = 0; i < choices.Length; i++)
             {
-                DialogueChoiceButton button = Instantiate(choiceButtonPrefab, choicesPanel.transform);
+                DialogueChoiceButton button = Instantiate(dialogueChoiceButtonPrefab, choicesContainer.transform);
                 button.SetChoice(choices[i], i);
             }
             
-            choicesPanel.SetActive(true);
+            choicesContainer.SetActive(true);
         }
         
         #endregion
@@ -326,19 +300,19 @@ namespace Forever.UI
         
         public void ShowQuestStarted(Quest quest)
         {
-            ShowNotification($"New Quest: {quest.questName}", NotificationType.QuestStart);
+            ShowNotification($"New Quest: {quest.questName}", NotificationType.Quest);
             UpdateQuestLog();
         }
         
         public void ShowQuestCompleted(Quest quest)
         {
-            ShowNotification($"Quest Completed: {quest.questName}", NotificationType.QuestComplete);
+            ShowNotification($"Quest Completed: {quest.questName}", NotificationType.Achievement);
             UpdateQuestLog();
         }
         
         private void UpdateQuestLog()
         {
-            if (questLogContent == null || questEntryPrefab == null) return;
+            if (questLogContent == null || questEntryPrefab == null || questSystem == null) return;
             
             // Clear existing entries
             foreach (Transform child in questLogContent)
@@ -347,11 +321,12 @@ namespace Forever.UI
             }
             
             // Add active quests
-            Quest[] activeQuests = questSystem.GetAvailableQuests();
+            var activeQuests = questSystem.GetActiveQuests();
             foreach (var quest in activeQuests)
             {
-                QuestLogEntry entry = Instantiate(questEntryPrefab, questLogContent);
-                entry.Initialize(quest);
+                var entry = Instantiate(questEntryPrefab, questLogContent);
+                float progress = questSystem.GetQuestState(quest.questId)?.objectives.Values.Average() ?? 0f;
+                entry.SetQuestInfo(quest.questName, quest.description, progress);
             }
         }
         
@@ -361,9 +336,27 @@ namespace Forever.UI
         
         public void ShowNotification(string message, NotificationType type)
         {
-            if (notificationPanel == null) return;
-            
-            StartCoroutine(ShowNotificationCoroutine(message, type));
+            // Convert NotificationType to UISoundType
+            UISoundType soundType = type switch
+            {
+                NotificationType.Quest => UISoundType.QuestAccept,
+                NotificationType.Achievement => UISoundType.Success,
+                NotificationType.Warning => UISoundType.Warning,
+                NotificationType.Error => UISoundType.Error,
+                _ => UISoundType.NotificationShow
+            };
+
+            // Play sound
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.PlayUISound(soundType);
+            }
+
+            // Show notification UI
+            if (notificationPanel != null)
+            {
+                StartCoroutine(ShowNotificationCoroutine(message, type));
+            }
         }
         
         private IEnumerator ShowNotificationCoroutine(string message, NotificationType type)
@@ -375,12 +368,6 @@ namespace Forever.UI
             if (notificationText != null)
             {
                 notificationText.text = message;
-            }
-            
-            // Play notification sound
-            if (audioManager != null)
-            {
-                audioManager.PlayUISound(type);
             }
             
             // Animate notification
@@ -404,7 +391,96 @@ namespace Forever.UI
             Destroy(notification);
         }
         
+        private void ShowQuestNotification(string message)
+        {
+            ShowNotification(message, NotificationType.Quest);
+        }
+        
         #endregion
+        
+        private void HandleQuestStarted(Quest quest)
+        {
+            if (quest != null)
+            {
+                ShowQuestNotification($"New Quest: {quest.questName}");
+                UpdateQuestLog();
+            }
+        }
+
+        private void HandleQuestCompleted(Quest quest)
+        {
+            if (quest != null)
+            {
+                ShowQuestNotification($"Quest Completed: {quest.questName}");
+                UpdateQuestLog();
+            }
+        }
+
+        private void HandleQuestProgress(Quest quest, float progress)
+        {
+            UpdateQuestLog();
+            if (progress >= 1f)
+            {
+                AudioManager.Instance?.PlayUISound(UISoundType.ObjectiveComplete);
+            }
+        }
+
+        private void HandleDialogueNodeStart(DialogueNode node)
+        {
+            if (node != null)
+            {
+                ShowDialoguePanel(true);
+                UpdateDialogueText(node.text);
+                AudioManager.Instance?.PlayUISound(UISoundType.DialogueStart);
+            }
+        }
+
+        private void HandleDialogueNodeEnd(DialogueNode node)
+        {
+            ShowDialoguePanel(false);
+            AudioManager.Instance?.PlayUISound(UISoundType.DialogueEnd);
+        }
+
+        private void HandleDialogueChoice(DialogueChoice choice)
+        {
+            if (choice != null)
+            {
+                dialogueSystem.SelectChoice(choice);
+                PlayUISound(UISoundType.DialogueChoice);
+            }
+        }
+
+        public void ShowDialogueUI(bool show)
+        {
+            ShowPanel(dialoguePanel, show);
+        }
+
+        public void ShowDialogueText(string text, string speakerName)
+        {
+            if (dialogueText != null)
+            {
+                dialogueText.text = text;
+            }
+            if (speakerNameText != null)
+            {
+                speakerNameText.text = speakerName;
+            }
+        }
+
+        public void ShowEventNotification(string eventId)
+        {
+            ShowNotification($"Event Started: {eventId}", NotificationType.Info);
+        }
+
+        public void ShowEventCompletion(string eventId)
+        {
+            ShowNotification($"Event Completed: {eventId}", NotificationType.Achievement);
+        }
+
+        public void ShowEventFailure(string eventId)
+        {
+            ShowNotification($"Event Failed: {eventId}", NotificationType.Error);
+        }
     }
     
     [System.Serializable]
@@ -430,10 +506,10 @@ namespace Forever.UI
     
     public enum NotificationType
     {
-        QuestStart,
-        QuestComplete,
-        ItemReceived,
+        Info,
+        Quest,
         Achievement,
-        Warning
+        Warning,
+        Error
     }
 } 

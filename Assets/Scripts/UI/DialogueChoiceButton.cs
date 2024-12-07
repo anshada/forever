@@ -1,12 +1,17 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using TMPro;
 using Forever.Audio;
 using System.Collections;
 
 namespace Forever.UI
 {
-    public class DialogueChoiceButton : MonoBehaviour
+    public class DialogueChoiceButton : MonoBehaviour, 
+        IPointerEnterHandler, 
+        IPointerExitHandler, 
+        ISelectHandler, 
+        IDeselectHandler
     {
         [Header("References")]
         public Button button;
@@ -34,8 +39,6 @@ namespace Forever.UI
             
             // Setup button events
             button.onClick.AddListener(OnClick);
-            button.onSelect.AddListener(OnSelect);
-            button.onDeselect.AddListener(OnDeselect);
         }
         
         public void SetChoice(string text, bool isEnabled = true)
@@ -54,8 +57,10 @@ namespace Forever.UI
             currentAnimation = StartCoroutine(FadeIn());
         }
         
-        private void OnSelect(UnityEngine.EventSystems.BaseEventData eventData)
+        public void OnPointerEnter(PointerEventData eventData)
         {
+            if (!button.interactable) return;
+            
             AudioManager.Instance.PlayUISound(UISoundType.ButtonHover);
             
             if (currentAnimation != null)
@@ -64,8 +69,32 @@ namespace Forever.UI
             currentAnimation = StartCoroutine(ScaleTo(originalScale * hoverScale, hoverDuration));
         }
         
-        private void OnDeselect(UnityEngine.EventSystems.BaseEventData eventData)
+        public void OnPointerExit(PointerEventData eventData)
         {
+            if (!button.interactable) return;
+            
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(ScaleTo(originalScale, hoverDuration));
+        }
+        
+        public void OnSelect(BaseEventData eventData)
+        {
+            if (!button.interactable) return;
+            
+            AudioManager.Instance.PlayUISound(UISoundType.ButtonHover);
+            
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(ScaleTo(originalScale * hoverScale, hoverDuration));
+        }
+        
+        public void OnDeselect(BaseEventData eventData)
+        {
+            if (!button.interactable) return;
+            
             if (currentAnimation != null)
                 StopCoroutine(currentAnimation);
                 
@@ -74,6 +103,8 @@ namespace Forever.UI
         
         private void OnClick()
         {
+            if (!button.interactable) return;
+            
             AudioManager.Instance.PlayUISound(UISoundType.ButtonClick);
             
             if (currentAnimation != null)
