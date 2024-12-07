@@ -22,6 +22,13 @@ namespace Forever.Core
         public bool isFullscreen = true;
         public int targetFrameRate = 60;
 
+        [Header("Player Progress")]
+        public int playerLevel = 1;
+        public float playerExperience = 0f;
+        public int currency = 0;
+        private Dictionary<string, bool> gameFlags = new Dictionary<string, bool>();
+        private Dictionary<string, float> relationships = new Dictionary<string, float>();
+
         private GameState previousGameState;
 
         private void Awake()
@@ -131,6 +138,53 @@ namespace Forever.Core
             Screen.fullScreen = isFullscreen;
             Application.targetFrameRate = targetFrameRate;
             // TODO: Implement volume control system
+        }
+
+        public void SetGameFlag(string flagName)
+        {
+            gameFlags[flagName] = true;
+        }
+
+        public bool GetGameFlag(string flagName)
+        {
+            return gameFlags.TryGetValue(flagName, out bool value) && value;
+        }
+
+        public void UpdateRelationship(string characterId, float change = 0.1f)
+        {
+            if (!relationships.ContainsKey(characterId))
+            {
+                relationships[characterId] = 0f;
+            }
+            relationships[characterId] = Mathf.Clamp01(relationships[characterId] + change);
+        }
+
+        public void AddInventoryItem(string itemId)
+        {
+            // Delegate to inventory system
+            InventorySystem.Instance?.AddItem(itemId);
+        }
+
+        public void GainExperience(float amount)
+        {
+            playerExperience += amount;
+            CheckLevelUp();
+        }
+
+        public void GainCurrency(int amount)
+        {
+            currency += amount;
+        }
+
+        private void CheckLevelUp()
+        {
+            float experienceForNextLevel = playerLevel * 1000f; // Simple level scaling
+            if (playerExperience >= experienceForNextLevel)
+            {
+                playerLevel++;
+                playerExperience -= experienceForNextLevel;
+                // Trigger level up effects
+            }
         }
 
         private void OnDestroy()

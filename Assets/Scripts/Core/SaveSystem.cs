@@ -233,5 +233,26 @@ namespace Forever.Core
             SaveGame();
             SaveSettings();
         }
+
+        public T GetSavedData<T>(string key) where T : class
+        {
+            string json = PlayerPrefs.GetString(key, "");
+            if (string.IsNullOrEmpty(json))
+                return null;
+            return JsonUtility.FromJson<T>(json);
+        }
+
+        public void SaveData<T>(string key, T data)
+        {
+            string json = JsonUtility.ToJson(data);
+            PlayerPrefs.SetString(key, json);
+            PlayerPrefs.Save();
+        }
+
+        public void SaveEventState(string eventId, bool completed)
+        {
+            PlayerPrefs.SetInt($"Event_{eventId}", completed ? 1 : 0);
+            PlayerPrefs.Save();
+        }
     }
 } 

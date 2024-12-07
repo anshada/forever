@@ -54,6 +54,14 @@ namespace Forever.UI
         public float notificationDuration = 3f;
         public AnimationCurve notificationCurve;
         
+        [Header("Notification Settings")]
+        public TextMeshProUGUI notificationText;
+        public bool notificationAutoHide = true;
+        
+        [Header("Dialogue UI")]
+        public Transform dialogueChoicesContainer;
+        public DialogueChoiceButton dialogueChoicePrefab;
+        
         private GameManager gameManager;
         private QuestSystem questSystem;
         private DialogueSystem dialogueSystem;
@@ -336,64 +344,57 @@ namespace Forever.UI
         
         public void ShowNotification(string message, NotificationType type)
         {
-            // Convert NotificationType to UISoundType
+            if (notificationPanel != null)
+            {
+                notificationPanel.SetActive(true);
+                notificationText.text = message;
+                SetNotificationStyle(type);
+
+                if (notificationAutoHide)
+                {
+                    CancelInvoke(nameof(HideNotification));
+                    Invoke(nameof(HideNotification), notificationDuration);
+                }
+
+                PlayNotificationSound(type);
+            }
+        }
+        
+        private void SetNotificationStyle(NotificationType type)
+        {
+            Color color = type switch
+            {
+                NotificationType.Success => Color.green,
+                NotificationType.Warning => Color.yellow,
+                NotificationType.Error => Color.red,
+                _ => Color.white
+            };
+
+            if (notificationText != null)
+            {
+                notificationText.color = color;
+            }
+        }
+
+        private void PlayNotificationSound(NotificationType type)
+        {
             UISoundType soundType = type switch
             {
-                NotificationType.Quest => UISoundType.QuestAccept,
-                NotificationType.Achievement => UISoundType.Success,
+                NotificationType.Success => UISoundType.Success,
                 NotificationType.Warning => UISoundType.Warning,
                 NotificationType.Error => UISoundType.Error,
                 _ => UISoundType.NotificationShow
             };
 
-            // Play sound
-            if (AudioManager.Instance != null)
-            {
-                AudioManager.Instance.PlayUISound(soundType);
-            }
+            audioManager?.PlaySound(soundType.ToString());
+        }
 
-            // Show notification UI
+        private void HideNotification()
+        {
             if (notificationPanel != null)
             {
-                StartCoroutine(ShowNotificationCoroutine(message, type));
+                notificationPanel.SetActive(false);
             }
-        }
-        
-        private IEnumerator ShowNotificationCoroutine(string message, NotificationType type)
-        {
-            GameObject notification = Instantiate(notificationPanel, notificationPanel.transform.parent);
-            notification.SetActive(true);
-            
-            TextMeshProUGUI notificationText = notification.GetComponentInChildren<TextMeshProUGUI>();
-            if (notificationText != null)
-            {
-                notificationText.text = message;
-            }
-            
-            // Animate notification
-            CanvasGroup canvasGroup = notification.GetComponent<CanvasGroup>();
-            if (canvasGroup != null)
-            {
-                float elapsed = 0f;
-                while (elapsed < notificationDuration)
-                {
-                    elapsed += Time.deltaTime;
-                    float normalizedTime = elapsed / notificationDuration;
-                    canvasGroup.alpha = notificationCurve.Evaluate(normalizedTime);
-                    yield return null;
-                }
-            }
-            else
-            {
-                yield return new WaitForSeconds(notificationDuration);
-            }
-            
-            Destroy(notification);
-        }
-        
-        private void ShowQuestNotification(string message)
-        {
-            ShowNotification(message, NotificationType.Quest);
         }
         
         #endregion
@@ -507,8 +508,7 @@ namespace Forever.UI
     public enum NotificationType
     {
         Info,
-        Quest,
-        Achievement,
+        Success,
         Warning,
         Error
     }

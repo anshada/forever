@@ -334,7 +334,7 @@ namespace Forever.Core
         private void OnEventTriggered(BaseEvent eventData)
         {
             // Notify UI
-            UIManager.Instance?.ShowEventNotification(eventData.eventName, eventData.description);
+            ShowEventNotification(eventData.eventName, eventData.description);
             
             // Play event start sound
             AudioManager.Instance?.PlayEventSound(eventData.startSound);
@@ -343,7 +343,7 @@ namespace Forever.Core
         private void OnEventCompleted(BaseEvent eventData)
         {
             // Notify UI
-            UIManager.Instance?.ShowEventCompletion(eventData.eventName, eventData.completionMessage);
+            ShowEventCompletion(eventData.eventName, eventData.completionMessage);
             
             // Play completion sound
             AudioManager.Instance?.PlayEventSound(eventData.completionSound);
@@ -358,7 +358,7 @@ namespace Forever.Core
         private void OnEventFailed(BaseEvent eventData)
         {
             // Notify UI
-            UIManager.Instance?.ShowEventFailure(eventData.eventName, eventData.failureMessage);
+            ShowEventFailure(eventData.eventName, eventData.failureMessage);
             
             // Play failure sound
             AudioManager.Instance?.PlayEventSound(eventData.failureSound);
@@ -398,6 +398,21 @@ namespace Forever.Core
             {
                 AudioManager.Instance.PlayUISound(UISoundType.Success);
             }
+        }
+
+        private void ShowEventNotification(string eventName, string description)
+        {
+            UIManager.Instance?.ShowNotification($"New Event: {eventName}", NotificationType.Info);
+        }
+
+        private void ShowEventCompletion(string eventName, string description)
+        {
+            UIManager.Instance?.ShowNotification($"Event Completed: {eventName}", NotificationType.Success);
+        }
+
+        private void ShowEventFailure(string eventName, string description)
+        {
+            UIManager.Instance?.ShowNotification($"Event Failed: {eventName}", NotificationType.Error);
         }
     }
     
