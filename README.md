@@ -26,7 +26,7 @@ Forever is a family-friendly adventure game that follows the Anshad family as th
 
 1. Clone the repository:
 bash
-git clone https://github.com/yourusername/forever.git
+git clone https://github.com/anshada/forever.git
 git lfs pull
 ```
 
@@ -56,5 +56,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🤝 Credits
 
-Created with ❤️ by the Forever development team.
+Created with ❤️ by the Inaya Foundation & Forever development (Anshad Shibna Ilan Inaya Iwaan) team.
+https://inaya.foundation
 ```
