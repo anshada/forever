@@ -1,8 +1,9 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System;
+using System.Collections;
 using Forever.Core;
-using Forever.Levels;
 using Forever.Characters;
 
 namespace Forever.UI
@@ -11,74 +12,128 @@ namespace Forever.UI
     {
         public static UIManager Instance { get; private set; }
 
-        [Header("Menu Panels")]
+        [Header("UI Panels")]
         public GameObject mainMenuPanel;
-        public GameObject pauseMenuPanel;
-        public GameObject levelSelectPanel;
-        public GameObject gameplayHUDPanel;
-        public GameObject levelCompletePanel;
-
-        [Header("Character UI")]
-        public Image[] characterPortraits;
-        public Image specialAbilityCooldown;
-        public TextMeshProUGUI currentCharacterName;
-
-        [Header("Level UI")]
-        public Slider progressBar;
-        public TextMeshProUGUI levelNameText;
-        public TextMeshProUGUI objectiveText;
-
+        public GameObject hudPanel;
+        public GameObject pausePanel;
+        public GameObject inventoryPanel;
+        public GameObject questPanel;
+        public GameObject dialoguePanel;
+        public GameObject characterPanel;
+        public GameObject settingsPanel;
+        public GameObject mapPanel;
+        
+        [Header("HUD Elements")]
+        public HealthBar[] characterHealthBars;
+        public Image magicEnergyBar;
+        public TextMeshProUGUI currentObjectiveText;
+        public GameObject interactionPrompt;
+        public GameObject notificationPanel;
+        public Image weatherIndicator;
+        public Image compassIndicator;
+        
+        [Header("Dialogue UI")]
+        public TextMeshProUGUI dialogueText;
+        public TextMeshProUGUI speakerNameText;
+        public GameObject choicesPanel;
+        public DialogueChoiceButton choiceButtonPrefab;
+        public Image speakerPortrait;
+        public Image listenerPortrait;
+        
+        [Header("Quest UI")]
+        public QuestLogEntry questEntryPrefab;
+        public Transform questLogContent;
+        public GameObject questNotificationPrefab;
+        public Transform questNotificationAnchor;
+        
         [Header("Animation")]
-        public float fadeSpeed = 0.5f;
-        public CanvasGroup fadePanel;
-
+        public float fadeSpeed = 1f;
+        public float notificationDuration = 3f;
+        public AnimationCurve notificationCurve;
+        
+        private GameManager gameManager;
+        private QuestSystem questSystem;
+        private DialogueSystem dialogueSystem;
+        private InventorySystem inventorySystem;
+        private AudioManager audioManager;
+        
+        private CanvasGroup mainCanvasGroup;
+        private Coroutine typingCoroutine;
+        private bool isTyping;
+        
         private void Awake()
         {
             if (Instance == null)
             {
                 Instance = this;
-                DontDestroyOnLoad(gameObject);
+                InitializeUI();
             }
             else
             {
                 Destroy(gameObject);
             }
         }
-
-        private void Start()
+        
+        private void InitializeUI()
         {
-            // Subscribe to events
-            GameManager.Instance.OnGameStateChanged += HandleGameStateChanged;
+            mainCanvasGroup = GetComponent<CanvasGroup>();
             
-            // Initialize UI
-            ShowMainMenu();
+            // Get system references
+            gameManager = FindObjectOfType<GameManager>();
+            questSystem = FindObjectOfType<QuestSystem>();
+            dialogueSystem = FindObjectOfType<DialogueSystem>();
+            inventorySystem = FindObjectOfType<InventorySystem>();
+            audioManager = FindObjectOfType<AudioManager>();
+            
+            // Initialize all panels
+            InitializePanels();
+            
+            // Subscribe to events
+            SubscribeToEvents();
         }
-
-        private void Update()
+        
+        private void InitializePanels()
         {
-            UpdateHUD();
+            // Set initial panel states
+            ShowPanel(mainMenuPanel, true);
+            ShowPanel(hudPanel, false);
+            ShowPanel(pausePanel, false);
+            ShowPanel(inventoryPanel, false);
+            ShowPanel(questPanel, false);
+            ShowPanel(dialoguePanel, false);
+            ShowPanel(characterPanel, false);
+            ShowPanel(settingsPanel, false);
+            ShowPanel(mapPanel, false);
+            
+            // Initialize HUD elements
+            UpdateHealthBars();
+            UpdateMagicEnergy(1f);
+            SetCurrentObjective("");
+            ShowInteractionPrompt(false);
         }
-
-        private void UpdateHUD()
+        
+        private void SubscribeToEvents()
         {
-            if (GameManager.Instance.currentGameState != GameState.Playing)
-                return;
-
-            // Update character info
-            Character currentCharacter = GameManager.Instance.currentCharacter;
-            if (currentCharacter != null)
+            if (gameManager != null)
             {
-                currentCharacterName.text = currentCharacter.characterName;
-                specialAbilityCooldown.fillAmount = currentCharacter.currentCooldown / currentCharacter.specialAbilityCooldown;
+                gameManager.OnGameStateChanged += HandleGameStateChanged;
             }
-
-            // Update level progress
-            if (LevelManager.Instance != null)
+            
+            if (questSystem != null)
             {
-                progressBar.value = LevelManager.Instance.levelProgress;
+                questSystem.OnQuestStarted += HandleQuestStarted;
+                questSystem.OnQuestCompleted += HandleQuestCompleted;
+                questSystem.OnQuestProgress += HandleQuestProgress;
+            }
+            
+            if (dialogueSystem != null)
+            {
+                dialogueSystem.OnDialogueNodeStart += HandleDialogueNodeStart;
+                dialogueSystem.OnDialogueNodeEnd += HandleDialogueNodeEnd;
+                dialogueSystem.OnDialogueChoice += HandleDialogueChoice;
             }
         }
-
+        
         private void HandleGameStateChanged(GameState newState)
         {
             switch (newState)
@@ -87,134 +142,297 @@ namespace Forever.UI
                     ShowMainMenu();
                     break;
                 case GameState.Playing:
-                    ShowGameplayHUD();
+                    ShowGameUI();
                     break;
                 case GameState.Paused:
                     ShowPauseMenu();
                     break;
                 case GameState.Cutscene:
-                    HideAllPanels();
+                    ShowCutsceneUI();
                     break;
             }
         }
-
+        
         public void ShowMainMenu()
         {
-            HideAllPanels();
-            mainMenuPanel.SetActive(true);
+            ShowPanel(mainMenuPanel, true);
+            ShowPanel(hudPanel, false);
+            ShowPanel(pausePanel, false);
         }
-
-        public void ShowLevelSelect()
+        
+        public void ShowGameUI()
         {
-            HideAllPanels();
-            levelSelectPanel.SetActive(true);
-            PopulateLevelSelect();
+            ShowPanel(mainMenuPanel, false);
+            ShowPanel(hudPanel, true);
+            ShowPanel(pausePanel, false);
         }
-
-        public void ShowGameplayHUD()
-        {
-            HideAllPanels();
-            gameplayHUDPanel.SetActive(true);
-            UpdateLevelInfo();
-        }
-
+        
         public void ShowPauseMenu()
         {
-            pauseMenuPanel.SetActive(true);
+            ShowPanel(pausePanel, true);
         }
-
-        public void ShowLevelComplete()
+        
+        public void ShowCutsceneUI()
         {
-            levelCompletePanel.SetActive(true);
+            ShowPanel(hudPanel, false);
+            // Show any cutscene-specific UI elements
         }
-
-        private void HideAllPanels()
+        
+        private void ShowPanel(GameObject panel, bool show)
         {
-            mainMenuPanel.SetActive(false);
-            pauseMenuPanel.SetActive(false);
-            levelSelectPanel.SetActive(false);
-            gameplayHUDPanel.SetActive(false);
-            levelCompletePanel.SetActive(false);
-        }
-
-        private void PopulateLevelSelect()
-        {
-            // TODO: Populate level select UI with available levels
-        }
-
-        private void UpdateLevelInfo()
-        {
-            var currentLevel = LevelManager.Instance.GetCurrentLevel();
-            if (currentLevel != null)
+            if (panel == null) return;
+            
+            CanvasGroup canvasGroup = panel.GetComponent<CanvasGroup>();
+            if (canvasGroup != null)
             {
-                levelNameText.text = currentLevel.levelName;
-                // TODO: Update objective text based on current level goals
+                StartCoroutine(FadePanel(canvasGroup, show ? 1f : 0f));
+            }
+            else
+            {
+                panel.SetActive(show);
             }
         }
-
-        public void OnPlayButtonClicked()
+        
+        private IEnumerator FadePanel(CanvasGroup canvasGroup, float targetAlpha)
         {
-            ShowLevelSelect();
-        }
-
-        public void OnLevelSelected(int levelIndex)
-        {
-            if (LevelManager.Instance.IsLevelUnlocked(levelIndex))
+            canvasGroup.interactable = targetAlpha > 0;
+            canvasGroup.blocksRaycasts = targetAlpha > 0;
+            
+            float startAlpha = canvasGroup.alpha;
+            float elapsed = 0f;
+            
+            while (elapsed < fadeSpeed)
             {
-                StartCoroutine(FadeAndLoadLevel(levelIndex));
-            }
-        }
-
-        private System.Collections.IEnumerator FadeAndLoadLevel(int levelIndex)
-        {
-            // Fade out
-            float alpha = 0f;
-            while (alpha < 1f)
-            {
-                alpha += Time.deltaTime * fadeSpeed;
-                fadePanel.alpha = alpha;
+                elapsed += Time.deltaTime;
+                canvasGroup.alpha = Mathf.Lerp(startAlpha, targetAlpha, elapsed / fadeSpeed);
                 yield return null;
             }
-
-            // Load level
-            LevelManager.Instance.LoadLevel(levelIndex);
-
-            // Fade in
-            while (alpha > 0f)
-            {
-                alpha -= Time.deltaTime * fadeSpeed;
-                fadePanel.alpha = alpha;
-                yield return null;
-            }
+            
+            canvasGroup.alpha = targetAlpha;
         }
-
-        public void OnPauseButtonClicked()
+        
+        #region HUD Updates
+        
+        public void UpdateHealthBars()
         {
-            if (GameManager.Instance.currentGameState == GameState.Playing)
+            if (characterHealthBars == null) return;
+            
+            foreach (var healthBar in characterHealthBars)
             {
-                GameManager.Instance.currentGameState = GameState.Paused;
-                Time.timeScale = 0f;
-            }
-            else if (GameManager.Instance.currentGameState == GameState.Paused)
-            {
-                GameManager.Instance.currentGameState = GameState.Playing;
-                Time.timeScale = 1f;
+                if (healthBar.character != null)
+                {
+                    healthBar.UpdateHealth(healthBar.character.currentHealth / healthBar.character.maxHealth);
+                }
             }
         }
-
-        public void OnMainMenuButtonClicked()
+        
+        public void UpdateMagicEnergy(float normalizedValue)
         {
-            Time.timeScale = 1f;
-            GameManager.Instance.currentGameState = GameState.MainMenu;
-            ShowMainMenu();
-        }
-
-        private void OnDestroy()
-        {
-            if (GameManager.Instance != null)
+            if (magicEnergyBar != null)
             {
-                GameManager.Instance.OnGameStateChanged -= HandleGameStateChanged;
+                magicEnergyBar.fillAmount = normalizedValue;
             }
         }
+        
+        public void SetCurrentObjective(string objective)
+        {
+            if (currentObjectiveText != null)
+            {
+                currentObjectiveText.text = objective;
+            }
+        }
+        
+        public void ShowInteractionPrompt(bool show, string promptText = "")
+        {
+            if (interactionPrompt != null)
+            {
+                interactionPrompt.SetActive(show);
+                if (show && !string.IsNullOrEmpty(promptText))
+                {
+                    interactionPrompt.GetComponentInChildren<TextMeshProUGUI>().text = promptText;
+                }
+            }
+        }
+        
+        #endregion
+        
+        #region Dialogue UI
+        
+        public void ShowDialogueUI(bool show)
+        {
+            ShowPanel(dialoguePanel, show);
+        }
+        
+        public void ShowDialogueText(string text, string speakerName)
+        {
+            if (typingCoroutine != null)
+            {
+                StopCoroutine(typingCoroutine);
+            }
+            
+            if (dialogueText != null)
+            {
+                typingCoroutine = StartCoroutine(TypeText(text));
+            }
+            
+            if (speakerNameText != null)
+            {
+                speakerNameText.text = speakerName;
+            }
+        }
+        
+        private IEnumerator TypeText(string text)
+        {
+            isTyping = true;
+            dialogueText.text = "";
+            
+            foreach (char c in text)
+            {
+                dialogueText.text += c;
+                if (c != ' ' && dialogueSystem != null)
+                {
+                    dialogueSystem.PlayDialogueEffects(DialogueEffectType.Typing);
+                }
+                yield return new WaitForSeconds(dialogueSystem.typingSpeed);
+            }
+            
+            isTyping = false;
+        }
+        
+        public void ShowDialogueChoices(DialogueChoice[] choices)
+        {
+            if (choicesPanel == null || choiceButtonPrefab == null) return;
+            
+            // Clear existing choices
+            foreach (Transform child in choicesPanel.transform)
+            {
+                Destroy(child.gameObject);
+            }
+            
+            // Create new choice buttons
+            for (int i = 0; i < choices.Length; i++)
+            {
+                DialogueChoiceButton button = Instantiate(choiceButtonPrefab, choicesPanel.transform);
+                button.SetChoice(choices[i], i);
+            }
+            
+            choicesPanel.SetActive(true);
+        }
+        
+        #endregion
+        
+        #region Quest UI
+        
+        public void ShowQuestStarted(Quest quest)
+        {
+            ShowNotification($"New Quest: {quest.questName}", NotificationType.QuestStart);
+            UpdateQuestLog();
+        }
+        
+        public void ShowQuestCompleted(Quest quest)
+        {
+            ShowNotification($"Quest Completed: {quest.questName}", NotificationType.QuestComplete);
+            UpdateQuestLog();
+        }
+        
+        private void UpdateQuestLog()
+        {
+            if (questLogContent == null || questEntryPrefab == null) return;
+            
+            // Clear existing entries
+            foreach (Transform child in questLogContent)
+            {
+                Destroy(child.gameObject);
+            }
+            
+            // Add active quests
+            Quest[] activeQuests = questSystem.GetAvailableQuests();
+            foreach (var quest in activeQuests)
+            {
+                QuestLogEntry entry = Instantiate(questEntryPrefab, questLogContent);
+                entry.Initialize(quest);
+            }
+        }
+        
+        #endregion
+        
+        #region Notifications
+        
+        public void ShowNotification(string message, NotificationType type)
+        {
+            if (notificationPanel == null) return;
+            
+            StartCoroutine(ShowNotificationCoroutine(message, type));
+        }
+        
+        private IEnumerator ShowNotificationCoroutine(string message, NotificationType type)
+        {
+            GameObject notification = Instantiate(notificationPanel, notificationPanel.transform.parent);
+            notification.SetActive(true);
+            
+            TextMeshProUGUI notificationText = notification.GetComponentInChildren<TextMeshProUGUI>();
+            if (notificationText != null)
+            {
+                notificationText.text = message;
+            }
+            
+            // Play notification sound
+            if (audioManager != null)
+            {
+                audioManager.PlayUISound(type);
+            }
+            
+            // Animate notification
+            CanvasGroup canvasGroup = notification.GetComponent<CanvasGroup>();
+            if (canvasGroup != null)
+            {
+                float elapsed = 0f;
+                while (elapsed < notificationDuration)
+                {
+                    elapsed += Time.deltaTime;
+                    float normalizedTime = elapsed / notificationDuration;
+                    canvasGroup.alpha = notificationCurve.Evaluate(normalizedTime);
+                    yield return null;
+                }
+            }
+            else
+            {
+                yield return new WaitForSeconds(notificationDuration);
+            }
+            
+            Destroy(notification);
+        }
+        
+        #endregion
+    }
+    
+    [System.Serializable]
+    public class HealthBar
+    {
+        public Character character;
+        public Image fillImage;
+        public TextMeshProUGUI valueText;
+        
+        public void UpdateHealth(float normalizedValue)
+        {
+            if (fillImage != null)
+            {
+                fillImage.fillAmount = normalizedValue;
+            }
+            
+            if (valueText != null)
+            {
+                valueText.text = $"{Mathf.RoundToInt(normalizedValue * 100)}%";
+            }
+        }
+    }
+    
+    public enum NotificationType
+    {
+        QuestStart,
+        QuestComplete,
+        ItemReceived,
+        Achievement,
+        Warning
     }
 } 
