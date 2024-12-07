@@ -1,220 +1,197 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using Forever.Core;
+using Forever.Audio;
+using System.Collections;
 
 namespace Forever.UI
 {
     public class QuestLogEntry : MonoBehaviour
     {
-        [Header("UI Elements")]
-        public TextMeshProUGUI questTitleText;
-        public TextMeshProUGUI questDescriptionText;
-        public TextMeshProUGUI questProgressText;
-        public Image questTypeIcon;
+        [Header("References")]
+        public TextMeshProUGUI questTitle;
+        public TextMeshProUGUI questDescription;
+        public TextMeshProUGUI progressText;
         public Image progressBar;
-        public Transform objectivesContainer;
-        public GameObject objectivePrefab;
+        public Image background;
+        public Button expandButton;
+        public RectTransform contentPanel;
         
-        [Header("Visual States")]
-        public Color mainQuestColor = Color.yellow;
-        public Color sideQuestColor = Color.cyan;
-        public Color dailyQuestColor = Color.green;
-        public Color hiddenQuestColor = Color.gray;
-        public Color completedColor = Color.green;
-        public Sprite mainQuestIcon;
-        public Sprite sideQuestIcon;
-        public Sprite dailyQuestIcon;
-        public Sprite hiddenQuestIcon;
+        [Header("Animation Settings")]
+        public float expandDuration = 0.3f;
+        public float progressBarDuration = 0.5f;
+        public float fadeInDuration = 0.3f;
+        public float fadeOutDuration = 0.2f;
         
-        private Quest quest;
-        private QuestState questState;
-        private Button expandButton;
         private bool isExpanded;
-        private RectTransform rectTransform;
-        private float collapsedHeight;
-        private float expandedHeight;
+        private float originalHeight;
+        private Vector2 collapsedSize;
+        private Vector2 expandedSize;
+        private Coroutine currentAnimation;
         
         private void Awake()
         {
-            rectTransform = GetComponent<RectTransform>();
-            expandButton = GetComponent<Button>();
-            
             if (expandButton != null)
             {
                 expandButton.onClick.AddListener(ToggleExpand);
             }
             
-            // Store initial heights
-            collapsedHeight = rectTransform.sizeDelta.y;
-            expandedHeight = collapsedHeight * 3f; // Adjust based on content
+            // Store original sizes
+            originalHeight = contentPanel.sizeDelta.y;
+            collapsedSize = new Vector2(contentPanel.sizeDelta.x, 0);
+            expandedSize = new Vector2(contentPanel.sizeDelta.x, originalHeight);
+            
+            // Initialize in collapsed state
+            contentPanel.sizeDelta = collapsedSize;
+            isExpanded = false;
         }
         
-        public void Initialize(Quest questData)
+        public void SetQuestInfo(string title, string description, float progress)
         {
-            quest = questData;
-            questState = QuestSystem.Instance?.GetQuestState(quest.questId);
+            questTitle.text = title;
+            questDescription.text = description;
             
-            UpdateVisuals();
-            CreateObjectiveEntries();
-        }
-        
-        private void UpdateVisuals()
-        {
-            // Update quest title
-            if (questTitleText != null)
+            // Animate progress bar
+            if (progressBar != null)
             {
-                questTitleText.text = quest.questName;
-                questTitleText.color = GetQuestColor();
+                if (currentAnimation != null)
+                    StopCoroutine(currentAnimation);
+                    
+                currentAnimation = StartCoroutine(AnimateProgressBar(progress));
             }
             
-            // Update description
-            if (questDescriptionText != null)
+            if (progressText != null)
             {
-                questDescriptionText.text = quest.description;
-                questDescriptionText.gameObject.SetActive(isExpanded);
+                progressText.text = $"{(progress * 100):F0}%";
             }
             
-            // Update progress
-            if (questProgressText != null && questState != null)
-            {
-                float progress = CalculateQuestProgress();
-                questProgressText.text = $"{Mathf.RoundToInt(progress * 100)}%";
-            }
-            
-            // Update progress bar
-            if (progressBar != null && questState != null)
-            {
-                progressBar.fillAmount = CalculateQuestProgress();
-                progressBar.color = questState.isCompleted ? completedColor : GetQuestColor();
-            }
-            
-            // Update type icon
-            if (questTypeIcon != null)
-            {
-                questTypeIcon.sprite = GetQuestTypeIcon();
-                questTypeIcon.color = GetQuestColor();
-            }
-        }
-        
-        private void CreateObjectiveEntries()
-        {
-            if (objectivesContainer == null || objectivePrefab == null || quest.objectives == null)
-                return;
+            // Fade in
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
                 
-            // Clear existing objectives
-            foreach (Transform child in objectivesContainer)
-            {
-                Destroy(child.gameObject);
-            }
-            
-            // Create new objective entries
-            foreach (var objective in quest.objectives)
-            {
-                GameObject objectiveGO = Instantiate(objectivePrefab, objectivesContainer);
-                QuestObjectiveEntry objectiveEntry = objectiveGO.GetComponent<QuestObjectiveEntry>();
-                
-                if (objectiveEntry != null)
-                {
-                    objectiveEntry.Initialize(objective, questState);
-                }
-            }
-            
-            // Hide objectives container when collapsed
-            objectivesContainer.gameObject.SetActive(isExpanded);
+            currentAnimation = StartCoroutine(FadeIn());
         }
         
-        private float CalculateQuestProgress()
+        private IEnumerator AnimateProgressBar(float targetFill)
         {
-            if (questState == null || quest.objectives == null || quest.objectives.Length == 0)
-                return 0f;
-                
-            float totalProgress = 0f;
-            float totalWeight = 0f;
+            float startFill = progressBar.fillAmount;
+            float elapsed = 0f;
             
-            foreach (var objective in quest.objectives)
+            while (elapsed < progressBarDuration)
             {
-                if (questState.objectives.TryGetValue(objective.objectiveId, out float progress))
-                {
-                    totalProgress += progress * objective.weight;
-                    totalWeight += objective.weight;
-                }
+                elapsed += Time.deltaTime;
+                float t = elapsed / progressBarDuration;
+                float smoothT = 1f - (1f - t) * (1f - t); // Ease out quad
+                
+                progressBar.fillAmount = Mathf.Lerp(startFill, targetFill, smoothT);
+                
+                yield return null;
             }
             
-            return totalWeight > 0 ? totalProgress / totalWeight : 0f;
+            progressBar.fillAmount = targetFill;
         }
         
-        private Color GetQuestColor()
+        private IEnumerator FadeIn()
         {
-            if (questState != null && questState.isCompleted)
-                return completedColor;
+            float elapsed = 0f;
+            Color startColor = background.color;
+            Color targetColor = new Color(startColor.r, startColor.g, startColor.b, 1f);
+            Vector3 startScale = Vector3.zero;
+            
+            while (elapsed < fadeInDuration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / fadeInDuration;
+                float smoothT = Mathf.Sin(t * Mathf.PI * 0.5f); // Ease out
                 
-            switch (quest.questType)
-            {
-                case QuestType.Main:
-                    return mainQuestColor;
-                case QuestType.Side:
-                    return sideQuestColor;
-                case QuestType.Daily:
-                    return dailyQuestColor;
-                case QuestType.Hidden:
-                    return hiddenQuestColor;
-                default:
-                    return Color.white;
+                background.color = Color.Lerp(startColor, targetColor, smoothT);
+                transform.localScale = Vector3.Lerp(startScale, Vector3.one, smoothT);
+                
+                yield return null;
             }
+            
+            background.color = targetColor;
+            transform.localScale = Vector3.one;
         }
         
-        private Sprite GetQuestTypeIcon()
-        {
-            switch (quest.questType)
-            {
-                case QuestType.Main:
-                    return mainQuestIcon;
-                case QuestType.Side:
-                    return sideQuestIcon;
-                case QuestType.Daily:
-                    return dailyQuestIcon;
-                case QuestType.Hidden:
-                    return hiddenQuestIcon;
-                default:
-                    return null;
-            }
-        }
-        
-        private void ToggleExpand()
+        public void ToggleExpand()
         {
             isExpanded = !isExpanded;
             
-            // Animate height change
-            float targetHeight = isExpanded ? expandedHeight : collapsedHeight;
-            LeanTween.value(gameObject, rectTransform.sizeDelta.y, targetHeight, 0.3f)
-                .setEase(LeanTweenType.easeOutQuad)
-                .setOnUpdate((float val) =>
+            AudioManager.Instance.PlayUISound(UISoundType.PanelToggle);
+            
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(AnimateExpand());
+        }
+        
+        private IEnumerator AnimateExpand()
+        {
+            float elapsed = 0f;
+            Vector2 startSize = contentPanel.sizeDelta;
+            Vector2 targetSize = isExpanded ? expandedSize : collapsedSize;
+            Vector3 startRotation = expandButton.transform.eulerAngles;
+            Vector3 targetRotation = new Vector3(0, 0, isExpanded ? 180 : 0);
+            
+            while (elapsed < expandDuration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / expandDuration;
+                float smoothT = Mathf.Sin(t * Mathf.PI * 0.5f); // Ease out
+                
+                contentPanel.sizeDelta = Vector2.Lerp(startSize, targetSize, smoothT);
+                
+                if (expandButton != null)
                 {
-                    rectTransform.sizeDelta = new Vector2(rectTransform.sizeDelta.x, val);
-                });
-            
-            // Show/hide expanded content
-            if (questDescriptionText != null)
-            {
-                questDescriptionText.gameObject.SetActive(isExpanded);
+                    expandButton.transform.eulerAngles = Vector3.Lerp(startRotation, targetRotation, smoothT);
+                }
+                
+                yield return null;
             }
             
-            if (objectivesContainer != null)
+            contentPanel.sizeDelta = targetSize;
+            if (expandButton != null)
             {
-                objectivesContainer.gameObject.SetActive(isExpanded);
+                expandButton.transform.eulerAngles = targetRotation;
+            }
+        }
+        
+        public void Hide()
+        {
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(FadeOut());
+        }
+        
+        private IEnumerator FadeOut()
+        {
+            float elapsed = 0f;
+            Color startColor = background.color;
+            Color targetColor = new Color(startColor.r, startColor.g, startColor.b, 0f);
+            Vector3 startScale = transform.localScale;
+            
+            while (elapsed < fadeOutDuration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / fadeOutDuration;
+                float smoothT = t * t; // Ease in
+                
+                background.color = Color.Lerp(startColor, targetColor, smoothT);
+                transform.localScale = Vector3.Lerp(startScale, Vector3.zero, smoothT);
+                
+                yield return null;
             }
             
-            // Play sound effect
-            AudioManager.Instance?.PlayUISound(UISoundType.PanelToggle);
+            gameObject.SetActive(false);
         }
         
         private void OnDestroy()
         {
-            // Clean up tweens
-            LeanTween.cancel(gameObject);
-            
-            // Remove button listener
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
             if (expandButton != null)
             {
                 expandButton.onClick.RemoveListener(ToggleExpand);

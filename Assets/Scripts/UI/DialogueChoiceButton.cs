@@ -1,139 +1,172 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using Forever.Core;
+using Forever.Audio;
+using System.Collections;
 
 namespace Forever.UI
 {
     public class DialogueChoiceButton : MonoBehaviour
     {
-        [Header("UI Elements")]
+        [Header("References")]
+        public Button button;
         public TextMeshProUGUI choiceText;
-        public Image backgroundImage;
-        public Image iconImage;
+        public Image background;
         
-        [Header("Visual States")]
-        public Color normalColor = Color.white;
-        public Color hoverColor = Color.gray;
-        public Color selectedColor = Color.yellow;
-        public float scaleOnHover = 1.1f;
-        public float animationSpeed = 5f;
+        [Header("Animation Settings")]
+        public float hoverScale = 1.1f;
+        public float hoverDuration = 0.2f;
+        public float clickScale = 0.9f;
+        public float clickDuration = 0.1f;
+        public float fadeInDuration = 0.3f;
+        public float fadeOutDuration = 0.2f;
         
-        private DialogueChoice choice;
-        private int choiceIndex;
-        private Button button;
         private Vector3 originalScale;
-        private bool isHovered;
+        private Coroutine currentAnimation;
         
         private void Awake()
         {
-            button = GetComponent<Button>();
+            if (button == null) button = GetComponent<Button>();
+            if (choiceText == null) choiceText = GetComponentInChildren<TextMeshProUGUI>();
+            if (background == null) background = GetComponent<Image>();
+            
             originalScale = transform.localScale;
             
-            // Set up button events
+            // Setup button events
             button.onClick.AddListener(OnClick);
-            
-            // Add hover events
-            var eventTrigger = gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
-            
-            var enterEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
-            enterEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerEnter;
-            enterEntry.callback.AddListener((data) => { OnPointerEnter(); });
-            eventTrigger.triggers.Add(enterEntry);
-            
-            var exitEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
-            exitEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerExit;
-            exitEntry.callback.AddListener((data) => { OnPointerExit(); });
-            eventTrigger.triggers.Add(exitEntry);
+            button.onSelect.AddListener(OnSelect);
+            button.onDeselect.AddListener(OnDeselect);
         }
         
-        public void SetChoice(DialogueChoice dialogueChoice, int index)
+        public void SetChoice(string text, bool isEnabled = true)
         {
-            choice = dialogueChoice;
-            choiceIndex = index;
+            choiceText.text = text;
+            button.interactable = isEnabled;
             
-            if (choiceText != null)
-            {
-                choiceText.text = dialogueChoice.text;
-            }
+            // Reset state
+            transform.localScale = originalScale;
+            background.color = new Color(background.color.r, background.color.g, background.color.b, 0f);
             
-            // Set initial visual state
-            UpdateVisualState(false);
+            // Fade in
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(FadeIn());
+        }
+        
+        private void OnSelect(UnityEngine.EventSystems.BaseEventData eventData)
+        {
+            AudioManager.Instance.PlayUISound(UISoundType.ButtonHover);
+            
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(ScaleTo(originalScale * hoverScale, hoverDuration));
+        }
+        
+        private void OnDeselect(UnityEngine.EventSystems.BaseEventData eventData)
+        {
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(ScaleTo(originalScale, hoverDuration));
         }
         
         private void OnClick()
         {
-            if (DialogueSystem.Instance != null)
-            {
-                DialogueSystem.Instance.MakeChoice(choiceIndex);
-            }
+            AudioManager.Instance.PlayUISound(UISoundType.ButtonClick);
             
-            // Visual feedback
-            UpdateVisualState(true);
-            
-            // Play sound effect
-            AudioManager.Instance?.PlayUISound(UISoundType.ButtonClick);
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(ClickAnimation());
         }
         
-        private void OnPointerEnter()
+        private IEnumerator FadeIn()
         {
-            isHovered = true;
+            float elapsed = 0f;
+            Color startColor = background.color;
+            Color targetColor = new Color(startColor.r, startColor.g, startColor.b, 1f);
+            Vector3 startScale = Vector3.zero;
             
-            // Scale up
-            LeanTween.scale(gameObject, originalScale * scaleOnHover, 1f / animationSpeed)
-                .setEase(LeanTweenType.easeOutQuad);
-            
-            // Color transition
-            if (backgroundImage != null)
+            while (elapsed < fadeInDuration)
             {
-                LeanTween.color(backgroundImage.rectTransform, hoverColor, 1f / animationSpeed)
-                    .setEase(LeanTweenType.easeOutQuad);
+                elapsed += Time.deltaTime;
+                float t = elapsed / fadeInDuration;
+                float smoothT = Mathf.Sin(t * Mathf.PI * 0.5f); // Ease out
+                
+                background.color = Color.Lerp(startColor, targetColor, smoothT);
+                transform.localScale = Vector3.Lerp(startScale, originalScale, smoothT);
+                
+                yield return null;
             }
             
-            // Play hover sound
-            AudioManager.Instance?.PlayUISound(UISoundType.ButtonHover);
+            background.color = targetColor;
+            transform.localScale = originalScale;
         }
         
-        private void OnPointerExit()
+        private IEnumerator ScaleTo(Vector3 targetScale, float duration)
         {
-            isHovered = false;
+            float elapsed = 0f;
+            Vector3 startScale = transform.localScale;
             
-            // Scale back
-            LeanTween.scale(gameObject, originalScale, 1f / animationSpeed)
-                .setEase(LeanTweenType.easeOutQuad);
-            
-            // Color transition
-            if (backgroundImage != null)
+            while (elapsed < duration)
             {
-                LeanTween.color(backgroundImage.rectTransform, normalColor, 1f / animationSpeed)
-                    .setEase(LeanTweenType.easeOutQuad);
+                elapsed += Time.deltaTime;
+                float t = elapsed / duration;
+                float smoothT = Mathf.Sin(t * Mathf.PI * 0.5f); // Ease out
+                
+                transform.localScale = Vector3.Lerp(startScale, targetScale, smoothT);
+                
+                yield return null;
             }
+            
+            transform.localScale = targetScale;
         }
         
-        private void UpdateVisualState(bool selected)
+        private IEnumerator ClickAnimation()
         {
-            if (backgroundImage != null)
+            // Scale down
+            yield return StartCoroutine(ScaleTo(originalScale * clickScale, clickDuration));
+            
+            // Scale back up
+            yield return StartCoroutine(ScaleTo(originalScale, clickDuration));
+        }
+        
+        public void Hide()
+        {
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(FadeOut());
+        }
+        
+        private IEnumerator FadeOut()
+        {
+            float elapsed = 0f;
+            Color startColor = background.color;
+            Color targetColor = new Color(startColor.r, startColor.g, startColor.b, 0f);
+            Vector3 startScale = transform.localScale;
+            
+            while (elapsed < fadeOutDuration)
             {
-                backgroundImage.color = selected ? selectedColor : (isHovered ? hoverColor : normalColor);
+                elapsed += Time.deltaTime;
+                float t = elapsed / fadeOutDuration;
+                float smoothT = t * t; // Ease in
+                
+                background.color = Color.Lerp(startColor, targetColor, smoothT);
+                transform.localScale = Vector3.Lerp(startScale, Vector3.zero, smoothT);
+                
+                yield return null;
             }
             
-            // Update any additional visual elements based on state
-            if (iconImage != null)
-            {
-                iconImage.gameObject.SetActive(selected);
-            }
+            gameObject.SetActive(false);
         }
         
         private void OnDestroy()
         {
-            // Clean up tweens
-            LeanTween.cancel(gameObject);
-            
-            // Remove button listener
-            if (button != null)
-            {
-                button.onClick.RemoveListener(OnClick);
-            }
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
         }
     }
 } 

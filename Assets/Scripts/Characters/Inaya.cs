@@ -41,7 +41,7 @@ namespace Forever.Characters
             {
                 // Apply wall run physics
                 rb.useGravity = false;
-                rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+                rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
             }
             else
             {
@@ -51,7 +51,7 @@ namespace Forever.Characters
 
         private void DoubleJump()
         {
-            rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+            rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
             rb.AddForce(Vector3.up * doubleJumpForce, ForceMode.Impulse);
             canDoubleJump = false;
             animator?.SetTrigger("DoubleJump");

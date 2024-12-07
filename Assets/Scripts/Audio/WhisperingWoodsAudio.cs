@@ -6,197 +6,239 @@ namespace Forever.Audio
 {
     public class WhisperingWoodsAudio : MonoBehaviour
     {
-        [System.Serializable]
-        public class WeatherSoundSet
-        {
-            public AudioClip[] windSounds;
-            public AudioClip[] leafRustleSounds;
-            public AudioClip[] birdSongs;
-            public AudioClip[] creatureSounds;
-        }
+        public static WhisperingWoodsAudio Instance { get; private set; }
 
-        [Header("Environment Audio")]
-        public WeatherSoundSet daySounds;
-        public WeatherSoundSet nightSounds;
-        public AudioClip[] magicalEffects;
+        [Header("Ambient Audio")]
+        public AudioClip[] dayAmbience;
+        public AudioClip[] nightAmbience;
+        public AudioClip[] rainAmbience;
+        public AudioClip[] windAmbience;
         
-        [Header("Interactive Audio")]
+        [Header("Nature Sounds")]
+        public AudioClip[] birdSongs;
+        public AudioClip[] insectSounds;
+        public AudioClip[] leafRustling;
+        public AudioClip[] waterSounds;
+        
+        [Header("Magical Sounds")]
         public AudioClip[] crystalHums;
-        public AudioClip[] plantGrowthSounds;
-        public AudioClip[] magicalPlantEffects;
+        public AudioClip[] magicalChimes;
+        public AudioClip[] mysticalWhispers;
         
-        [Header("Music")]
-        public AudioClip mainTheme;
-        public AudioClip mysteriousTheme;
-        public AudioClip puzzleTheme;
-
-        [Header("Sound Settings")]
-        public float minTimeBetweenSounds = 5f;
-        public float maxTimeBetweenSounds = 15f;
-        public float fadeInDuration = 2f;
-        public float fadeOutDuration = 2f;
-
-        private bool isNightTime = false;
-        private List<AudioSource> activeSources = new List<AudioSource>();
-        private float nextSoundTime;
-
-        private void Start()
+        [Header("Audio Sources")]
+        public AudioSource primaryAmbienceSource;
+        public AudioSource secondaryAmbienceSource;
+        public AudioSource effectsSource;
+        public AudioSource magicalSource;
+        
+        private Dictionary<string, float> soundCooldowns = new Dictionary<string, float>();
+        private float minSoundInterval = 1f;
+        
+        private void Awake()
         {
-            InitializeAudio();
-        }
-
-        private void InitializeAudio()
-        {
-            // Start main theme
-            AudioManager.Instance.PlayMusic("WhisperingWoodsTheme");
-            
-            // Start ambient sounds
-            AudioManager.Instance.StartAmbientSounds();
-            
-            // Schedule first environmental sound
-            nextSoundTime = Time.time + Random.Range(minTimeBetweenSounds, maxTimeBetweenSounds);
-        }
-
-        private void Update()
-        {
-            if (Time.time >= nextSoundTime)
+            if (Instance == null)
             {
-                PlayRandomEnvironmentalSound();
-                nextSoundTime = Time.time + Random.Range(minTimeBetweenSounds, maxTimeBetweenSounds);
-            }
-        }
-
-        private void PlayRandomEnvironmentalSound()
-        {
-            WeatherSoundSet currentSoundSet = isNightTime ? nightSounds : daySounds;
-            
-            // Randomly select sound type
-            int soundType = Random.Range(0, 4);
-            AudioClip[] selectedArray = null;
-            
-            switch (soundType)
-            {
-                case 0:
-                    selectedArray = currentSoundSet.windSounds;
-                    break;
-                case 1:
-                    selectedArray = currentSoundSet.leafRustleSounds;
-                    break;
-                case 2:
-                    selectedArray = currentSoundSet.birdSongs;
-                    break;
-                case 3:
-                    selectedArray = currentSoundSet.creatureSounds;
-                    break;
-            }
-
-            if (selectedArray != null && selectedArray.Length > 0)
-            {
-                AudioClip selectedClip = selectedArray[Random.Range(0, selectedArray.Length)];
-                PlaySoundWithRandomPosition(selectedClip);
-            }
-        }
-
-        private void PlaySoundWithRandomPosition(AudioClip clip)
-        {
-            // Get random position within level bounds
-            Vector3 randomPosition = GetRandomPositionInLevel();
-            AudioManager.Instance.PlaySoundAtPosition(clip.name, randomPosition);
-        }
-
-        private Vector3 GetRandomPositionInLevel()
-        {
-            // Get level bounds from the WhisperingWoodsGenerator
-            var levelGenerator = FindObjectOfType<Levels.WhisperingWoodsGenerator>();
-            if (levelGenerator != null)
-            {
-                float width = levelGenerator.terrainSettings.width;
-                float length = levelGenerator.terrainSettings.length;
-                
-                float x = Random.Range(0, width);
-                float z = Random.Range(0, length);
-                float y = Terrain.activeTerrain.SampleHeight(new Vector3(x, 0, z));
-                
-                return new Vector3(x, y + 2f, z); // Add small height offset for better sound positioning
-            }
-            
-            return transform.position;
-        }
-
-        public void OnMagicalPlantInteraction(Vector3 position, int interactionType)
-        {
-            if (magicalPlantEffects.Length > interactionType)
-            {
-                AudioManager.Instance.PlaySoundAtPosition(magicalPlantEffects[interactionType].name, position);
-            }
-        }
-
-        public void OnCrystalInteraction(Vector3 position)
-        {
-            if (crystalHums.Length > 0)
-            {
-                AudioClip hum = crystalHums[Random.Range(0, crystalHums.Length)];
-                AudioManager.Instance.PlaySoundAtPosition(hum.name, position);
-            }
-        }
-
-        public void OnPlantGrowth(Vector3 position)
-        {
-            if (plantGrowthSounds.Length > 0)
-            {
-                AudioClip growth = plantGrowthSounds[Random.Range(0, plantGrowthSounds.Length)];
-                AudioManager.Instance.PlaySoundAtPosition(growth.name, position);
-            }
-        }
-
-        public void OnPuzzleStart()
-        {
-            AudioManager.Instance.PlayMusic("WhisperingWoodsPuzzle");
-        }
-
-        public void OnPuzzleComplete()
-        {
-            AudioManager.Instance.PlayMusic("WhisperingWoodsTheme");
-            
-            if (magicalEffects.Length > 0)
-            {
-                AudioClip effect = magicalEffects[Random.Range(0, magicalEffects.Length)];
-                AudioManager.Instance.PlaySound(effect.name);
-            }
-        }
-
-        public void SetTimeOfDay(bool isNight)
-        {
-            isNightTime = isNight;
-            
-            // Crossfade to appropriate theme
-            string themeName = isNight ? "WhisperingWoodsNight" : "WhisperingWoodsDay";
-            AudioManager.Instance.PlayMusic(themeName);
-        }
-
-        public void OnMysteriousArea(bool entering)
-        {
-            if (entering)
-            {
-                AudioManager.Instance.PlayMusic("WhisperingWoodsMystery");
+                Instance = this;
+                InitializeAudio();
             }
             else
             {
-                AudioManager.Instance.PlayMusic("WhisperingWoodsTheme");
+                Destroy(gameObject);
             }
         }
-
+        
+        private void InitializeAudio()
+        {
+            // Setup audio sources if not assigned
+            if (primaryAmbienceSource == null)
+            {
+                primaryAmbienceSource = gameObject.AddComponent<AudioSource>();
+                primaryAmbienceSource.loop = true;
+                primaryAmbienceSource.spatialBlend = 0f;
+            }
+            
+            if (secondaryAmbienceSource == null)
+            {
+                secondaryAmbienceSource = gameObject.AddComponent<AudioSource>();
+                secondaryAmbienceSource.loop = true;
+                secondaryAmbienceSource.spatialBlend = 0f;
+            }
+            
+            if (effectsSource == null)
+            {
+                effectsSource = gameObject.AddComponent<AudioSource>();
+                effectsSource.spatialBlend = 1f;
+            }
+            
+            if (magicalSource == null)
+            {
+                magicalSource = gameObject.AddComponent<AudioSource>();
+                magicalSource.spatialBlend = 0.5f;
+            }
+        }
+        
+        public void SetTimeOfDayAmbience(bool isDay, float blendDuration = 2f)
+        {
+            AudioClip newClip = isDay ? 
+                GetRandomClip(dayAmbience) : 
+                GetRandomClip(nightAmbience);
+                
+            CrossFadeAmbience(newClip, blendDuration);
+        }
+        
+        public void SetWeatherAmbience(WeatherType type, float intensity, float blendDuration = 2f)
+        {
+            AudioClip weatherClip = null;
+            
+            switch (type)
+            {
+                case WeatherType.Rain:
+                    weatherClip = GetRandomClip(rainAmbience);
+                    break;
+                case WeatherType.Wind:
+                    weatherClip = GetRandomClip(windAmbience);
+                    break;
+            }
+            
+            if (weatherClip != null)
+            {
+                secondaryAmbienceSource.volume = intensity;
+                CrossFadeSecondaryAmbience(weatherClip, blendDuration);
+            }
+            else
+            {
+                FadeOutSecondaryAmbience(blendDuration);
+            }
+        }
+        
+        private void CrossFadeAmbience(AudioClip newClip, float duration)
+        {
+            if (primaryAmbienceSource.clip == newClip) return;
+            
+            // Start fading out current ambience
+            StartCoroutine(FadeAudioSource(primaryAmbienceSource, 0f, duration));
+            
+            // Start new ambience
+            primaryAmbienceSource.clip = newClip;
+            primaryAmbienceSource.Play();
+            StartCoroutine(FadeAudioSource(primaryAmbienceSource, 1f, duration));
+        }
+        
+        private void CrossFadeSecondaryAmbience(AudioClip newClip, float duration)
+        {
+            if (secondaryAmbienceSource.clip == newClip) return;
+            
+            StartCoroutine(FadeAudioSource(secondaryAmbienceSource, 0f, duration));
+            
+            secondaryAmbienceSource.clip = newClip;
+            secondaryAmbienceSource.Play();
+            StartCoroutine(FadeAudioSource(secondaryAmbienceSource, secondaryAmbienceSource.volume, duration));
+        }
+        
+        private void FadeOutSecondaryAmbience(float duration)
+        {
+            StartCoroutine(FadeAudioSource(secondaryAmbienceSource, 0f, duration));
+        }
+        
+        private System.Collections.IEnumerator FadeAudioSource(AudioSource source, float targetVolume, float duration)
+        {
+            float startVolume = source.volume;
+            float elapsed = 0f;
+            
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                source.volume = Mathf.Lerp(startVolume, targetVolume, elapsed / duration);
+                yield return null;
+            }
+            
+            source.volume = targetVolume;
+            if (targetVolume == 0f && source.isPlaying)
+            {
+                source.Stop();
+            }
+        }
+        
+        public void PlayNatureSound(Vector3 position)
+        {
+            if (Time.time < GetSoundCooldown("nature")) return;
+            
+            AudioClip clip = null;
+            float dayTime = System.DateTime.Now.Hour / 24f;
+            
+            if (dayTime > 0.6f && dayTime < 0.8f) // Dawn
+            {
+                clip = GetRandomClip(birdSongs);
+            }
+            else if (dayTime > 0.2f && dayTime < 0.4f) // Night
+            {
+                clip = GetRandomClip(insectSounds);
+            }
+            else
+            {
+                clip = GetRandomClip(leafRustling);
+            }
+            
+            if (clip != null)
+            {
+                PlaySoundAtPosition(clip, position);
+                SetSoundCooldown("nature", minSoundInterval);
+            }
+        }
+        
+        public void PlayMagicalSound(Vector3 position, float intensity = 1f)
+        {
+            if (Time.time < GetSoundCooldown("magical")) return;
+            
+            AudioClip clip = GetRandomClip(magicalChimes);
+            if (clip != null)
+            {
+                PlaySoundAtPosition(clip, position, intensity);
+                SetSoundCooldown("magical", minSoundInterval);
+            }
+        }
+        
+        public void PlayMysticalWhisper(Vector3 position)
+        {
+            if (Time.time < GetSoundCooldown("whisper")) return;
+            
+            AudioClip clip = GetRandomClip(mysticalWhispers);
+            if (clip != null)
+            {
+                PlaySoundAtPosition(clip, position, 0.5f);
+                SetSoundCooldown("whisper", minSoundInterval * 3f);
+            }
+        }
+        
+        private void PlaySoundAtPosition(AudioClip clip, Vector3 position, float volume = 1f)
+        {
+            effectsSource.transform.position = position;
+            effectsSource.PlayOneShot(clip, volume);
+        }
+        
+        private AudioClip GetRandomClip(AudioClip[] clips)
+        {
+            if (clips == null || clips.Length == 0) return null;
+            return clips[Random.Range(0, clips.Length)];
+        }
+        
+        private float GetSoundCooldown(string soundType)
+        {
+            float cooldown;
+            return soundCooldowns.TryGetValue(soundType, out cooldown) ? cooldown : 0f;
+        }
+        
+        private void SetSoundCooldown(string soundType, float duration)
+        {
+            soundCooldowns[soundType] = Time.time + duration;
+        }
+        
         private void OnDestroy()
         {
-            // Clean up any active audio sources
-            foreach (var source in activeSources)
+            if (Instance == this)
             {
-                if (source != null)
-                {
-                    Destroy(source);
-                }
+                Instance = null;
             }
-            activeSources.Clear();
         }
     }
 } 

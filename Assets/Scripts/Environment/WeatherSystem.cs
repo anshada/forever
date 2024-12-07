@@ -6,303 +6,155 @@ namespace Forever.Environment
 {
     public class WeatherSystem : MonoBehaviour
     {
-        [System.Serializable]
-        public class TimeOfDaySettings
-        {
-            public Color ambientColor;
-            public Color fogColor;
-            public float fogDensity;
-            public float shadowStrength;
-            public float bloomIntensity;
-            public AnimationCurve lightIntensityCurve;
-        }
+        public static WeatherSystem Instance { get; private set; }
 
-        [System.Serializable]
-        public class WeatherSettings
-        {
-            public WeatherType type;
-            public float transitionDuration = 2f;
-            public float minDuration = 60f;
-            public float maxDuration = 300f;
-            public Color fogColor;
-            public float fogDensity;
-            public float windIntensity;
-            public AudioClip[] weatherSounds;
-            [Range(0f, 1f)]
-            public float probability = 0.3f;
-        }
-
-        [Header("Time Settings")]
-        public float dayLength = 1200f; // 20 minutes in real time
-        public float startTime = 8f; // Start at 8 AM
-        [Range(0f, 1f)]
-        public float timeOfDay = 0f;
-        public bool freezeTime = false;
-
-        [Header("Time of Day")]
-        public Light sunLight;
-        public Light moonLight;
-        public TimeOfDaySettings daySettings;
-        public TimeOfDaySettings nightSettings;
-        public Material skyboxMaterial;
-        
-        [Header("Weather")]
-        public WeatherSettings[] weatherSettings;
+        [Header("Weather Settings")]
         public WeatherType currentWeather = WeatherType.Clear;
-        public float weatherChangeDelay = 30f;
+        public float weatherIntensity = 0f;
+        public float weatherTransitionSpeed = 1f;
+        public float magicalDisturbanceThreshold = 0.7f;
         
-        [Header("Environment Response")]
-        public float grassSwayAmount = 1f;
-        public float treeSwayAmount = 0.5f;
-        public Material grassMaterial;
-        public Material[] treeMaterials;
-
-        private float currentWeatherDuration;
-        private float weatherTimer;
-        private WeatherSettings currentWeatherSettings;
-        private AudioSource weatherAudioSource;
-        private ParticleSystem[] weatherParticleSystems;
-
-        private void Start()
+        [Header("Time Settings")]
+        public float dayLength = 1200f; // 20 minutes per day
+        public float startTime = 0.25f; // Start at 6 AM
+        
+        private float currentTime;
+        private float targetWeatherIntensity;
+        private WeatherType targetWeather;
+        private bool isTransitioning;
+        
+        public float CurrentWeatherIntensity => weatherIntensity;
+        
+        private void Awake()
         {
-            InitializeWeatherSystem();
+            if (Instance == null)
+            {
+                Instance = this;
+                InitializeWeather();
+            }
+            else
+            {
+                Destroy(gameObject);
+            }
         }
-
-        private void InitializeWeatherSystem()
+        
+        private void InitializeWeather()
         {
-            // Setup audio source for weather sounds
-            weatherAudioSource = gameObject.AddComponent<AudioSource>();
-            weatherAudioSource.loop = true;
-            weatherAudioSource.spatialBlend = 0f; // 2D sound
-            weatherAudioSource.priority = 0; // High priority
-
-            // Get weather particle systems
-            weatherParticleSystems = GetComponentsInChildren<ParticleSystem>();
-
-            // Initialize time of day
-            timeOfDay = startTime / 24f;
-            UpdateTimeOfDay();
-
-            // Start with clear weather
-            SetWeather(WeatherType.Clear);
-
-            // Start weather cycle
-            StartCoroutine(WeatherCycle());
+            currentTime = startTime;
+            targetWeatherIntensity = weatherIntensity;
+            targetWeather = currentWeather;
+            
+            // Initial weather setup
+            UpdateWeatherEffects();
         }
-
+        
         private void Update()
         {
-            if (!freezeTime)
-            {
-                // Update time of day
-                timeOfDay += Time.deltaTime / dayLength;
-                if (timeOfDay >= 1f)
-                    timeOfDay = 0f;
-
-                UpdateTimeOfDay();
-            }
-
-            // Update weather effects
-            if (currentWeatherSettings != null)
-            {
-                weatherTimer += Time.deltaTime;
-                if (weatherTimer >= currentWeatherDuration)
-                {
-                    StartCoroutine(WeatherCycle());
-                }
-            }
+            UpdateTimeOfDay();
+            UpdateWeather();
         }
-
+        
         private void UpdateTimeOfDay()
         {
-            // Calculate sun and moon positions
-            float sunRotation = timeOfDay * 360f;
-            sunLight.transform.rotation = Quaternion.Euler(sunRotation, 0f, 0f);
-            moonLight.transform.rotation = Quaternion.Euler(sunRotation + 180f, 0f, 0f);
-
-            // Determine if it's day or night
-            bool isDay = timeOfDay > 0.25f && timeOfDay < 0.75f;
-            TimeOfDaySettings currentSettings = isDay ? daySettings : nightSettings;
-
-            // Interpolate lighting settings
-            float transitionProgress = Mathf.InverseLerp(0.25f, 0.75f, timeOfDay);
-            Color ambientColor = Color.Lerp(nightSettings.ambientColor, daySettings.ambientColor, transitionProgress);
-            Color fogColor = Color.Lerp(nightSettings.fogColor, daySettings.fogColor, transitionProgress);
-            float fogDensity = Mathf.Lerp(nightSettings.fogDensity, daySettings.fogDensity, transitionProgress);
-            float shadowStrength = Mathf.Lerp(nightSettings.shadowStrength, daySettings.shadowStrength, transitionProgress);
-
-            // Apply lighting settings
-            RenderSettings.ambientLight = ambientColor;
-            RenderSettings.fogColor = fogColor;
-            RenderSettings.fogDensity = fogDensity;
-
-            // Update light intensities
-            sunLight.intensity = daySettings.lightIntensityCurve.Evaluate(timeOfDay);
-            moonLight.intensity = nightSettings.lightIntensityCurve.Evaluate(timeOfDay);
-
-            // Update skybox
-            if (skyboxMaterial != null)
+            currentTime += Time.deltaTime / dayLength;
+            if (currentTime >= 1f)
             {
-                skyboxMaterial.SetFloat("_Exposure", isDay ? 1f : 0.5f);
+                currentTime -= 1f;
             }
-
-            // Notify other systems of time change
-            if (WhisperingWoodsVFX.Instance != null)
-            {
-                WhisperingWoodsVFX.Instance.SetTimeOfDay(isDay);
-            }
-
-            if (WhisperingWoodsAudio.Instance != null)
-            {
-                WhisperingWoodsAudio.Instance.SetTimeOfDay(isDay);
-            }
+            
+            // Update environment based on time
+            bool isDay = currentTime > 0.25f && currentTime < 0.75f;
+            WhisperingWoodsVFX.Instance?.SetEnvironmentEffects(isDay);
+            WhisperingWoodsAudio.Instance?.SetTimeOfDayAmbience(isDay);
         }
-
-        private System.Collections.IEnumerator WeatherCycle()
+        
+        private void UpdateWeather()
         {
-            while (true)
+            if (isTransitioning)
             {
-                yield return new WaitForSeconds(weatherChangeDelay);
-
-                // Determine next weather
-                WeatherType nextWeather = DetermineNextWeather();
-                if (nextWeather != currentWeather)
+                weatherIntensity = Mathf.MoveTowards(weatherIntensity, targetWeatherIntensity, 
+                    weatherTransitionSpeed * Time.deltaTime);
+                    
+                if (Mathf.Approximately(weatherIntensity, targetWeatherIntensity))
                 {
-                    yield return StartCoroutine(TransitionWeather(nextWeather));
+                    isTransitioning = false;
+                    if (weatherIntensity <= 0f)
+                    {
+                        currentWeather = targetWeather;
+                    }
                 }
-
-                // Set duration for current weather
-                currentWeatherDuration = Random.Range(
-                    currentWeatherSettings.minDuration,
-                    currentWeatherSettings.maxDuration
-                );
-                weatherTimer = 0f;
+                
+                UpdateWeatherEffects();
             }
         }
-
-        private WeatherType DetermineNextWeather()
+        
+        private void UpdateWeatherEffects()
         {
-            // Clear weather is always possible
-            if (Random.value > 0.5f)
-                return WeatherType.Clear;
-
-            // Choose random weather based on probability
-            float totalProbability = 0f;
-            foreach (var weather in weatherSettings)
+            // Update visual effects
+            WhisperingWoodsVFX.Instance?.SetWeatherEffects(currentWeather, weatherIntensity);
+            
+            // Update audio
+            WhisperingWoodsAudio.Instance?.SetWeatherAmbience(currentWeather, weatherIntensity);
+        }
+        
+        public void SetWeather(WeatherType type, float intensity, float transitionDuration = 1f)
+        {
+            targetWeather = type;
+            targetWeatherIntensity = intensity;
+            weatherTransitionSpeed = 1f / transitionDuration;
+            isTransitioning = true;
+            
+            if (intensity > 0f)
             {
-                if (weather.type != WeatherType.Clear)
-                    totalProbability += weather.probability;
+                currentWeather = type;
             }
-
-            float random = Random.value * totalProbability;
-            float currentProb = 0f;
-
-            foreach (var weather in weatherSettings)
+        }
+        
+        public void OnMagicalDisturbance(Vector3 position, float intensity)
+        {
+            if (intensity >= magicalDisturbanceThreshold)
             {
-                if (weather.type != WeatherType.Clear)
+                // Create weather anomaly
+                WeatherType disturbanceType = Random.value > 0.5f ? WeatherType.Wind : WeatherType.Rain;
+                float disturbanceRadius = intensity * 10f;
+                
+                // Apply localized weather effect
+                WhisperingWoodsVFX.Instance?.PlayMagicalEffect(position, intensity);
+                WhisperingWoodsAudio.Instance?.PlayMagicalSound(position, intensity);
+                
+                // Potentially change global weather if disturbance is strong enough
+                if (intensity > 0.9f)
                 {
-                    currentProb += weather.probability;
-                    if (random <= currentProb)
-                        return weather.type;
-                }
-            }
-
-            return WeatherType.Clear;
-        }
-
-        private System.Collections.IEnumerator TransitionWeather(WeatherType newWeather)
-        {
-            WeatherSettings oldSettings = currentWeatherSettings;
-            WeatherSettings newSettings = GetWeatherSettings(newWeather);
-
-            if (newSettings == null)
-                yield break;
-
-            float elapsed = 0f;
-            float duration = newSettings.transitionDuration;
-
-            // Start new weather sound
-            if (newSettings.weatherSounds != null && newSettings.weatherSounds.Length > 0)
-            {
-                AudioClip newSound = newSettings.weatherSounds[Random.Range(0, newSettings.weatherSounds.Length)];
-                weatherAudioSource.clip = newSound;
-                weatherAudioSource.Play();
-            }
-
-            // Transition weather effects
-            while (elapsed < duration)
-            {
-                elapsed += Time.deltaTime;
-                float t = elapsed / duration;
-
-                // Interpolate weather parameters
-                if (oldSettings != null)
-                {
-                    RenderSettings.fogColor = Color.Lerp(oldSettings.fogColor, newSettings.fogColor, t);
-                    RenderSettings.fogDensity = Mathf.Lerp(oldSettings.fogDensity, newSettings.fogDensity, t);
-                    UpdateWindEffect(Mathf.Lerp(oldSettings.windIntensity, newSettings.windIntensity, t));
-                }
-
-                yield return null;
-            }
-
-            currentWeather = newWeather;
-            currentWeatherSettings = newSettings;
-
-            // Update VFX
-            if (WhisperingWoodsVFX.Instance != null)
-            {
-                WhisperingWoodsVFX.Instance.SetWeatherEffect(currentWeather);
-            }
-        }
-
-        private WeatherSettings GetWeatherSettings(WeatherType type)
-        {
-            foreach (var settings in weatherSettings)
-            {
-                if (settings.type == type)
-                    return settings;
-            }
-            return null;
-        }
-
-        private void UpdateWindEffect(float intensity)
-        {
-            // Update grass sway
-            if (grassMaterial != null)
-            {
-                grassMaterial.SetFloat("_WindStrength", intensity * grassSwayAmount);
-            }
-
-            // Update tree sway
-            foreach (var material in treeMaterials)
-            {
-                if (material != null)
-                {
-                    material.SetFloat("_WindStrength", intensity * treeSwayAmount);
+                    SetWeather(disturbanceType, intensity, 2f);
                 }
             }
         }
-
-        public void SetTime(float hour)
+        
+        public float GetTimeOfDay()
         {
-            timeOfDay = Mathf.Clamp01(hour / 24f);
-            UpdateTimeOfDay();
+            return currentTime;
         }
-
-        public void SetWeather(WeatherType type)
+        
+        public bool IsDay()
         {
-            StopAllCoroutines();
-            StartCoroutine(TransitionWeather(type));
+            return currentTime > 0.25f && currentTime < 0.75f;
         }
-
+        
         private void OnDestroy()
         {
-            // Cleanup
-            if (weatherAudioSource != null)
+            if (Instance == this)
             {
-                weatherAudioSource.Stop();
+                Instance = null;
             }
         }
+    }
+    
+    public enum WeatherType
+    {
+        Clear,
+        Rain,
+        Snow,
+        Fog,
+        Wind
     }
 } 

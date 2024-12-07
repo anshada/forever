@@ -1,201 +1,177 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using Forever.Core;
+using System.Collections;
 
 namespace Forever.UI
 {
     public class QuestObjectiveEntry : MonoBehaviour
     {
-        [Header("UI Elements")]
+        [Header("References")]
         public TextMeshProUGUI objectiveText;
-        public TextMeshProUGUI progressText;
-        public Image progressBar;
-        public Image objectiveIcon;
-        public Image checkmarkIcon;
+        public Image checkmark;
+        public Image background;
         
-        [Header("Visual States")]
-        public Color incompleteColor = new Color(0.7f, 0.7f, 0.7f);
-        public Color completeColor = Color.green;
-        public Color optionalColor = new Color(0.5f, 0.5f, 1f);
-        public Color failedColor = Color.red;
+        [Header("Animation Settings")]
+        public float fadeInDuration = 0.3f;
+        public float fadeOutDuration = 0.2f;
+        public float completionScaleDuration = 0.5f;
+        public float completionScaleMultiplier = 1.2f;
         
-        [Header("Icons")]
-        public Sprite collectIcon;
-        public Sprite interactIcon;
-        public Sprite defeatIcon;
-        public Sprite protectIcon;
-        public Sprite exploreIcon;
-        public Sprite escortIcon;
-        public Sprite solveIcon;
-        public Sprite checkmarkSprite;
-        
-        private QuestObjective objective;
-        private QuestState questState;
-        private float currentProgress;
-        private bool isComplete;
-        private RectTransform rectTransform;
+        private Vector3 originalScale;
+        private Coroutine currentAnimation;
         
         private void Awake()
         {
-            rectTransform = GetComponent<RectTransform>();
+            originalScale = transform.localScale;
+            
+            if (checkmark != null)
+                checkmark.gameObject.SetActive(false);
         }
         
-        public void Initialize(QuestObjective objectiveData, QuestState state)
+        public void SetObjective(string text, bool isCompleted = false)
         {
-            objective = objectiveData;
-            questState = state;
+            objectiveText.text = text;
             
-            // Get current progress
-            if (questState != null && questState.objectives.TryGetValue(objective.objectiveId, out float progress))
+            // Reset state
+            transform.localScale = originalScale;
+            background.color = new Color(background.color.r, background.color.g, background.color.b, 0f);
+            
+            if (checkmark != null)
             {
-                currentProgress = progress;
-                isComplete = Mathf.Approximately(progress, 1f);
+                checkmark.gameObject.SetActive(isCompleted);
+                checkmark.color = new Color(checkmark.color.r, checkmark.color.g, checkmark.color.b, isCompleted ? 1f : 0f);
             }
             
-            UpdateVisuals();
-        }
-        
-        private void UpdateVisuals()
-        {
-            // Update objective text
-            if (objectiveText != null)
-            {
-                string optionalPrefix = objective.isOptional ? "[Optional] " : "";
-                objectiveText.text = optionalPrefix + objective.description;
-                objectiveText.color = GetObjectiveColor();
-            }
-            
-            // Update progress text
-            if (progressText != null)
-            {
-                if (objective.targetValue > 0)
-                {
-                    float currentValue = currentProgress * objective.targetValue;
-                    progressText.text = $"{Mathf.RoundToInt(currentValue)}/{Mathf.RoundToInt(objective.targetValue)}";
-                }
-                else
-                {
-                    progressText.gameObject.SetActive(false);
-                }
-            }
-            
-            // Update progress bar
-            if (progressBar != null)
-            {
-                progressBar.fillAmount = currentProgress;
-                progressBar.color = GetObjectiveColor();
-            }
-            
-            // Update objective icon
-            if (objectiveIcon != null)
-            {
-                objectiveIcon.sprite = GetObjectiveIcon();
-                objectiveIcon.color = GetObjectiveColor();
-            }
-            
-            // Update checkmark
-            if (checkmarkIcon != null)
-            {
-                checkmarkIcon.gameObject.SetActive(isComplete);
-                if (isComplete)
-                {
-                    checkmarkIcon.sprite = checkmarkSprite;
-                    checkmarkIcon.color = completeColor;
-                }
-            }
-            
-            // Apply fade effect if complete
-            CanvasGroup canvasGroup = GetComponent<CanvasGroup>();
-            if (canvasGroup != null)
-            {
-                canvasGroup.alpha = isComplete ? 0.7f : 1f;
-            }
-        }
-        
-        private Color GetObjectiveColor()
-        {
-            if (isComplete)
-                return completeColor;
+            // Fade in
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
                 
-            if (objective.isOptional)
-                return optionalColor;
+            currentAnimation = StartCoroutine(FadeIn());
+        }
+        
+        private IEnumerator FadeIn()
+        {
+            float elapsed = 0f;
+            Color startColor = background.color;
+            Color targetColor = new Color(startColor.r, startColor.g, startColor.b, 1f);
+            Vector3 startScale = Vector3.zero;
+            
+            while (elapsed < fadeInDuration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / fadeInDuration;
+                float smoothT = Mathf.Sin(t * Mathf.PI * 0.5f); // Ease out
                 
-            return incompleteColor;
+                background.color = Color.Lerp(startColor, targetColor, smoothT);
+                transform.localScale = Vector3.Lerp(startScale, originalScale, smoothT);
+                
+                yield return null;
+            }
+            
+            background.color = targetColor;
+            transform.localScale = originalScale;
         }
         
-        private Sprite GetObjectiveIcon()
+        public void Complete()
         {
-            switch (objective.type)
-            {
-                case ObjectiveType.Collect:
-                    return collectIcon;
-                case ObjectiveType.Interact:
-                    return interactIcon;
-                case ObjectiveType.Defeat:
-                    return defeatIcon;
-                case ObjectiveType.Protect:
-                    return protectIcon;
-                case ObjectiveType.Explore:
-                    return exploreIcon;
-                case ObjectiveType.Escort:
-                    return escortIcon;
-                case ObjectiveType.Solve:
-                    return solveIcon;
-                default:
-                    return null;
-            }
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(CompleteAnimation());
         }
         
-        public void UpdateProgress(float progress)
+        private IEnumerator CompleteAnimation()
         {
-            currentProgress = progress;
-            isComplete = Mathf.Approximately(progress, 1f);
+            if (checkmark != null)
+                checkmark.gameObject.SetActive(true);
             
-            // Animate progress change
-            if (progressBar != null)
+            // Scale up
+            float elapsed = 0f;
+            Vector3 startScale = originalScale;
+            Vector3 targetScale = originalScale * completionScaleMultiplier;
+            
+            while (elapsed < completionScaleDuration * 0.5f)
             {
-                LeanTween.value(gameObject, progressBar.fillAmount, progress, 0.5f)
-                    .setEase(LeanTweenType.easeOutQuad)
-                    .setOnUpdate((float val) =>
-                    {
-                        progressBar.fillAmount = val;
-                    });
+                elapsed += Time.deltaTime;
+                float t = elapsed / (completionScaleDuration * 0.5f);
+                float smoothT = Mathf.Sin(t * Mathf.PI * 0.5f); // Ease out
+                
+                transform.localScale = Vector3.Lerp(startScale, targetScale, smoothT);
+                
+                if (checkmark != null)
+                {
+                    Color color = checkmark.color;
+                    color.a = smoothT;
+                    checkmark.color = color;
+                }
+                
+                yield return null;
             }
             
-            UpdateVisuals();
+            // Scale back to normal
+            elapsed = 0f;
+            startScale = targetScale;
+            targetScale = originalScale;
             
-            // Play completion effect if just completed
-            if (isComplete && Mathf.Approximately(progressBar.fillAmount, progress))
+            while (elapsed < completionScaleDuration * 0.5f)
             {
-                PlayCompletionEffect();
+                elapsed += Time.deltaTime;
+                float t = elapsed / (completionScaleDuration * 0.5f);
+                float smoothT = Mathf.Sin(t * Mathf.PI * 0.5f); // Ease out
+                
+                transform.localScale = Vector3.Lerp(startScale, targetScale, smoothT);
+                
+                yield return null;
             }
+            
+            transform.localScale = originalScale;
+            
+            if (checkmark != null)
+                checkmark.color = new Color(checkmark.color.r, checkmark.color.g, checkmark.color.b, 1f);
         }
         
-        private void PlayCompletionEffect()
+        public void Hide()
         {
-            // Scale pulse animation
-            LeanTween.scale(gameObject, Vector3.one * 1.1f, 0.2f)
-                .setEase(LeanTweenType.easeOutQuad)
-                .setLoopPingPong(1);
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
+                
+            currentAnimation = StartCoroutine(FadeOut());
+        }
+        
+        private IEnumerator FadeOut()
+        {
+            float elapsed = 0f;
+            Color startColor = background.color;
+            Color targetColor = new Color(startColor.r, startColor.g, startColor.b, 0f);
+            Vector3 startScale = transform.localScale;
             
-            // Fade in checkmark
-            if (checkmarkIcon != null)
+            while (elapsed < fadeOutDuration)
             {
-                checkmarkIcon.gameObject.SetActive(true);
-                checkmarkIcon.color = new Color(1f, 1f, 1f, 0f);
-                LeanTween.alpha(checkmarkIcon.rectTransform, 1f, 0.3f)
-                    .setEase(LeanTweenType.easeOutQuad);
+                elapsed += Time.deltaTime;
+                float t = elapsed / fadeOutDuration;
+                float smoothT = t * t; // Ease in
+                
+                background.color = Color.Lerp(startColor, targetColor, smoothT);
+                transform.localScale = Vector3.Lerp(startScale, Vector3.zero, smoothT);
+                
+                if (checkmark != null)
+                {
+                    Color color = checkmark.color;
+                    color.a = 1f - smoothT;
+                    checkmark.color = color;
+                }
+                
+                yield return null;
             }
             
-            // Play sound effect
-            AudioManager.Instance?.PlayUISound(UISoundType.ObjectiveComplete);
+            gameObject.SetActive(false);
         }
         
         private void OnDestroy()
         {
-            // Clean up tweens
-            LeanTween.cancel(gameObject);
+            if (currentAnimation != null)
+                StopCoroutine(currentAnimation);
         }
     }
 } 

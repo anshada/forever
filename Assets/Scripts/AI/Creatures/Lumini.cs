@@ -137,8 +137,8 @@ namespace Forever.AI.Creatures
                 // Apply to movement
                 if (combinedForce.magnitude > 0.1f)
                 {
-                    NavMeshHit hit;
-                    if (NavMesh.SamplePosition(transform.position + combinedForce, out hit, wanderRadius, 1))
+                    UnityEngine.AI.NavMeshHit hit;
+                    if (UnityEngine.AI.NavMesh.SamplePosition(transform.position + combinedForce, out hit, wanderRadius, 1))
                     {
                         agent.SetDestination(hit.position);
                     }

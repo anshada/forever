@@ -6,6 +6,8 @@ namespace Forever.VFX
 {
     public class WhisperingWoodsVFX : MonoBehaviour
     {
+        public static WhisperingWoodsVFX Instance { get; private set; }
+
         [System.Serializable]
         public class MagicalPlantVFX
         {
@@ -53,282 +55,165 @@ namespace Forever.VFX
         public EnvironmentalVFX environmentVFX;
         
         [Header("Weather Effects")]
-        public ParticleSystem rainEffect;
-        public ParticleSystem mistEffect;
-        public ParticleSystem magicalAuraEffect;
+        public ParticleSystem rainParticles;
+        public ParticleSystem snowParticles;
+        public ParticleSystem fogParticles;
+        public ParticleSystem windParticles;
+        public ParticleSystem magicalSparkles;
 
         private List<ParticleSystem> activeEnvironmentalEffects = new List<ParticleSystem>();
         private Dictionary<Transform, ParticleSystem> activeGlowEffects = new Dictionary<Transform, ParticleSystem>();
         private Camera mainCamera;
 
-        private void Start()
+        private void Awake()
         {
-            mainCamera = Camera.main;
-            InitializeEnvironmentalEffects();
-        }
-
-        private void InitializeEnvironmentalEffects()
-        {
-            // Spawn initial environmental effects
-            SpawnEnvironmentalEffects(environmentVFX.floatingSpores, 5);
-            SpawnEnvironmentalEffects(environmentVFX.fireflies, 8);
-            SpawnEnvironmentalEffects(environmentVFX.magicalWisps, 3);
-            SpawnEnvironmentalEffects(environmentVFX.glowingMushrooms, 10);
-
-            // Start weather effects
-            if (mistEffect != null)
+            if (Instance == null)
             {
-                mistEffect.Play();
-            }
-        }
-
-        private void SpawnEnvironmentalEffects(ParticleSystem[] effectPrefabs, int count)
-        {
-            if (effectPrefabs == null || effectPrefabs.Length == 0) return;
-
-            for (int i = 0; i < count; i++)
-            {
-                Vector3 randomPosition = GetRandomSpawnPosition();
-                ParticleSystem effectPrefab = effectPrefabs[Random.Range(0, effectPrefabs.Length)];
-                
-                ParticleSystem instance = Instantiate(effectPrefab, randomPosition, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
-                instance.Play();
-                activeEnvironmentalEffects.Add(instance);
-            }
-        }
-
-        private Vector3 GetRandomSpawnPosition()
-        {
-            Vector2 randomCircle = Random.insideUnitCircle * environmentVFX.spawnRadius;
-            Vector3 position = transform.position + new Vector3(randomCircle.x, 0f, randomCircle.y);
-            position.y += Random.Range(0f, environmentVFX.heightRange);
-            
-            // Raycast to find ground position
-            RaycastHit hit;
-            if (Physics.Raycast(position + Vector3.up * 10f, Vector3.down, out hit, 20f))
-            {
-                position.y = hit.point.y;
-            }
-            
-            return position;
-        }
-
-        public void OnMagicalPlantInteraction(Transform plant, CharacterType characterType)
-        {
-            switch (characterType)
-            {
-                case CharacterType.Shibna:
-                    PlayHealingEffect(plant);
-                    break;
-                case CharacterType.Iwaan:
-                    PlayColorChangeEffect(plant);
-                    break;
-                case CharacterType.Anshad:
-                    PlayTransformEffect(plant);
-                    break;
-                case CharacterType.Inaya:
-                    PlayGrowthEffect(plant);
-                    break;
-                case CharacterType.Ilan:
-                    PlayAnalysisEffect(plant);
-                    break;
-            }
-        }
-
-        private void PlayHealingEffect(Transform target)
-        {
-            if (plantVFX.healingEffect != null)
-            {
-                ParticleSystem healingInstance = Instantiate(plantVFX.healingEffect, target.position, Quaternion.identity);
-                healingInstance.Play();
-                Destroy(healingInstance.gameObject, healingInstance.main.duration);
-            }
-        }
-
-        private void PlayColorChangeEffect(Transform target)
-        {
-            if (plantVFX.colorChangeEffect != null)
-            {
-                ParticleSystem colorInstance = Instantiate(plantVFX.colorChangeEffect, target.position, Quaternion.identity);
-                var mainModule = colorInstance.main;
-                mainModule.startColor = plantVFX.colorGradient.Evaluate(Random.value);
-                colorInstance.Play();
-                Destroy(colorInstance.gameObject, mainModule.duration);
-            }
-        }
-
-        private void PlayTransformEffect(Transform target)
-        {
-            if (plantVFX.transformEffect != null)
-            {
-                ParticleSystem transformInstance = Instantiate(plantVFX.transformEffect, target.position, Quaternion.identity);
-                transformInstance.Play();
-                Destroy(transformInstance.gameObject, transformInstance.main.duration);
-            }
-        }
-
-        private void PlayGrowthEffect(Transform target)
-        {
-            if (plantVFX.growthEffect != null)
-            {
-                ParticleSystem growthInstance = Instantiate(plantVFX.growthEffect, target.position, Quaternion.identity);
-                growthInstance.transform.SetParent(target);
-                growthInstance.Play();
-                StartCoroutine(ScaleEffectWithTarget(growthInstance, target));
-            }
-        }
-
-        private void PlayAnalysisEffect(Transform target)
-        {
-            if (plantVFX.glowEffect != null)
-            {
-                if (!activeGlowEffects.ContainsKey(target))
-                {
-                    ParticleSystem glowInstance = Instantiate(plantVFX.glowEffect, target.position, Quaternion.identity);
-                    glowInstance.transform.SetParent(target);
-                    var emission = glowInstance.emission;
-                    emission.rateOverTime = plantVFX.glowIntensity;
-                    glowInstance.Play();
-                    activeGlowEffects.Add(target, glowInstance);
-                    StartCoroutine(FadeGlowEffect(target, glowInstance));
-                }
-            }
-        }
-
-        private System.Collections.IEnumerator ScaleEffectWithTarget(ParticleSystem effect, Transform target)
-        {
-            Vector3 initialScale = target.localScale;
-            float duration = effect.main.duration;
-            float elapsed = 0f;
-
-            while (elapsed < duration)
-            {
-                elapsed += Time.deltaTime;
-                float scale = Mathf.Lerp(1f, 2f, elapsed / duration);
-                effect.transform.localScale = initialScale * scale;
-                yield return null;
-            }
-
-            Destroy(effect.gameObject);
-        }
-
-        private System.Collections.IEnumerator FadeGlowEffect(Transform target, ParticleSystem glowEffect)
-        {
-            float duration = 3f;
-            float elapsed = 0f;
-            var emission = glowEffect.emission;
-            float initialRate = emission.rateOverTime.constant;
-
-            while (elapsed < duration)
-            {
-                elapsed += Time.deltaTime;
-                emission.rateOverTime = Mathf.Lerp(initialRate, 0f, elapsed / duration);
-                yield return null;
-            }
-
-            activeGlowEffects.Remove(target);
-            Destroy(glowEffect.gameObject);
-        }
-
-        public void PlayCrystalEffect(Transform crystal, bool activate)
-        {
-            if (activate)
-            {
-                if (crystalVFX.activationEffect != null)
-                {
-                    ParticleSystem activationInstance = Instantiate(crystalVFX.activationEffect, crystal.position, Quaternion.identity);
-                    activationInstance.Play();
-                    Destroy(activationInstance.gameObject, activationInstance.main.duration);
-                }
+                Instance = this;
+                InitializeEffects();
             }
             else
             {
-                if (crystalVFX.resonanceEffect != null)
-                {
-                    ParticleSystem resonanceInstance = Instantiate(crystalVFX.resonanceEffect, crystal.position, Quaternion.identity);
-                    resonanceInstance.Play();
-                    Destroy(resonanceInstance.gameObject, resonanceInstance.main.duration);
-                }
+                Destroy(gameObject);
             }
         }
-
-        public void CreateCrystalBeam(Transform startCrystal, Transform endCrystal)
+        
+        private void InitializeEffects()
         {
-            if (crystalVFX.beamEffect != null && crystalVFX.beamRenderer != null)
-            {
-                GameObject beamObj = new GameObject("CrystalBeam");
-                LineRenderer beamRenderer = beamObj.AddComponent<LineRenderer>();
-                beamRenderer.material = crystalVFX.beamMaterial;
-                beamRenderer.startWidth = crystalVFX.beamWidth;
-                beamRenderer.endWidth = crystalVFX.beamWidth;
-                beamRenderer.positionCount = 2;
-                beamRenderer.useWorldSpace = true;
-
-                StartCoroutine(AnimateBeam(beamRenderer, startCrystal, endCrystal));
-            }
+            // Initialize all particle systems in stopped state
+            StopAllEffects();
         }
-
-        private System.Collections.IEnumerator AnimateBeam(LineRenderer beam, Transform start, Transform end)
+        
+        public void StopAllEffects()
         {
-            float elapsed = 0f;
+            if (rainParticles) rainParticles.Stop();
+            if (snowParticles) snowParticles.Stop();
+            if (fogParticles) fogParticles.Stop();
+            if (windParticles) windParticles.Stop();
+            if (magicalSparkles) magicalSparkles.Stop();
             
-            while (true)
+            StopArrayEffects(fireflies);
+            StopArrayEffects(floatingSpores);
+            StopArrayEffects(magicalWisps);
+            StopArrayEffects(glowingMushrooms);
+        }
+        
+        private void StopArrayEffects(ParticleSystem[] effects)
+        {
+            if (effects == null) return;
+            foreach (var effect in effects)
             {
-                elapsed += Time.deltaTime * crystalVFX.pulseSpeed;
-                
-                beam.SetPosition(0, start.position);
-                beam.SetPosition(1, end.position);
-                
-                float pulseValue = Mathf.PingPong(elapsed, 1f);
-                beam.startColor = crystalVFX.beamGradient.Evaluate(pulseValue);
-                beam.endColor = crystalVFX.beamGradient.Evaluate((pulseValue + 0.5f) % 1f);
-                
-                yield return null;
+                if (effect) effect.Stop();
             }
         }
-
-        public void SetWeatherEffect(WeatherType type)
+        
+        public void SetWeatherEffects(WeatherType type, float intensity)
         {
+            StopAllWeatherEffects();
+            
             switch (type)
             {
-                case WeatherType.Clear:
-                    if (rainEffect != null) rainEffect.Stop();
-                    if (mistEffect != null) mistEffect.Stop();
-                    break;
                 case WeatherType.Rain:
-                    if (rainEffect != null) rainEffect.Play();
+                    if (rainParticles)
+                    {
+                        var emission = rainParticles.emission;
+                        emission.rateOverTime = 100f * intensity;
+                        rainParticles.Play();
+                    }
                     break;
-                case WeatherType.Mist:
-                    if (mistEffect != null) mistEffect.Play();
+                    
+                case WeatherType.Snow:
+                    if (snowParticles)
+                    {
+                        var emission = snowParticles.emission;
+                        emission.rateOverTime = 50f * intensity;
+                        snowParticles.Play();
+                    }
+                    break;
+                    
+                case WeatherType.Fog:
+                    if (fogParticles)
+                    {
+                        var emission = fogParticles.emission;
+                        emission.rateOverTime = 20f * intensity;
+                        fogParticles.Play();
+                    }
+                    break;
+                    
+                case WeatherType.Wind:
+                    if (windParticles)
+                    {
+                        var emission = windParticles.emission;
+                        emission.rateOverTime = 30f * intensity;
+                        windParticles.Play();
+                    }
                     break;
             }
         }
-
-        private void OnDestroy()
+        
+        private void StopAllWeatherEffects()
         {
-            // Cleanup active effects
-            foreach (var effect in activeEnvironmentalEffects)
+            if (rainParticles) rainParticles.Stop();
+            if (snowParticles) snowParticles.Stop();
+            if (fogParticles) fogParticles.Stop();
+            if (windParticles) windParticles.Stop();
+        }
+        
+        public void SetEnvironmentEffects(bool enabled, float intensity = 1f)
+        {
+            SetArrayEffects(fireflies, enabled, intensity);
+            SetArrayEffects(floatingSpores, enabled, intensity);
+            SetArrayEffects(magicalWisps, enabled, intensity);
+            SetArrayEffects(glowingMushrooms, enabled, intensity);
+        }
+        
+        private void SetArrayEffects(ParticleSystem[] effects, bool enabled, float intensity)
+        {
+            if (effects == null) return;
+            foreach (var effect in effects)
             {
-                if (effect != null)
+                if (effect)
                 {
-                    Destroy(effect.gameObject);
+                    if (enabled)
+                    {
+                        var emission = effect.emission;
+                        emission.rateOverTime = emission.rateOverTime.constant * intensity;
+                        effect.Play();
+                    }
+                    else
+                    {
+                        effect.Stop();
+                    }
                 }
             }
-            
-            foreach (var effect in activeGlowEffects.Values)
+        }
+        
+        public void PlayMagicalEffect(Vector3 position, float intensity)
+        {
+            if (magicalSparkles)
             {
-                if (effect != null)
-                {
-                    Destroy(effect.gameObject);
-                }
+                magicalSparkles.transform.position = position;
+                var emission = magicalSparkles.emission;
+                emission.rateOverTime = 50f * intensity;
+                magicalSparkles.Play();
+            }
+        }
+        
+        private void OnDestroy()
+        {
+            if (Instance == this)
+            {
+                Instance = null;
             }
         }
     }
-
+    
     public enum WeatherType
     {
         Clear,
         Rain,
-        Mist
+        Snow,
+        Fog,
+        Wind
     }
 } 
