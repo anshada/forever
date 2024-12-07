@@ -218,7 +218,7 @@ namespace Forever.AI.Creatures
             }
         }
         
-        protected override void OnTriggerExit(Collider other)
+        private void OnTriggerExit(Collider other)
         {
             if (other.CompareTag("DarkArea"))
             {

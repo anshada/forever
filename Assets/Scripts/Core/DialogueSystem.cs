@@ -2,6 +2,8 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 using Forever.Characters;
+using Forever.UI;
+using Forever.Audio;
 
 namespace Forever.Core
 {

@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.AI;
 using System;
 using System.Collections.Generic;
+using Forever.Characters;
 
 namespace Forever.AI
 {
@@ -280,26 +281,32 @@ namespace Forever.AI
         protected virtual void InitializeAffinities()
         {
             // Set default affinities for each character type
-            characterAffinities[typeof(Characters.Inaya)] = 0.8f;
-            characterAffinities[typeof(Characters.Anshad)] = 0.6f;
-            characterAffinities[typeof(Characters.Shibna)] = 0.9f;
-            characterAffinities[typeof(Characters.Ilan)] = 0.7f;
-            characterAffinities[typeof(Characters.Iwaan)] = 0.8f;
+            characterAffinities[typeof(Inaya)] = 0.8f;
+            characterAffinities[typeof(Anshad)] = 0.6f;
+            characterAffinities[typeof(Shibna)] = 0.9f;
+            characterAffinities[typeof(Ilan)] = 0.7f;
+            characterAffinities[typeof(Iwaan)] = 0.8f;
         }
         
         public virtual void OnCharacterProximity(Character character)
         {
-            if (character == null) return;
-            
-            float affinity = 0f;
-            if (characterAffinities.TryGetValue(character.GetType(), out affinity))
+            // Base implementation
+            float affinity = 0.5f;
+            if (characterAffinities.TryGetValue(character.GetType(), out float storedAffinity))
             {
-                float reactionThreshold = UnityEngine.Random.value;
-                if (reactionThreshold < affinity * sociabilityWeight)
-                {
-                    currentTarget = character.transform;
-                    TransitionToState(AIState.Follow);
-                }
+                affinity = storedAffinity;
+            }
+            
+            // Determine reaction based on affinity
+            if (affinity > 0.7f)
+            {
+                currentTarget = character.transform;
+                TransitionToState(AIState.Follow);
+            }
+            else if (affinity < 0.3f)
+            {
+                currentTarget = character.transform;
+                TransitionToState(AIState.Flee);
             }
         }
         

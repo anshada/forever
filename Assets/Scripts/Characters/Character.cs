@@ -9,38 +9,43 @@ namespace Forever.Characters
         public string characterName;
         public CharacterType characterType;
         
-        [Header("Movement")]
+        [Header("Stats")]
+        public float maxHealth = 100f;
+        public float currentHealth;
         public float moveSpeed = 5f;
         public float jumpForce = 8f;
+        
+        [Header("Special Ability")]
+        public float specialAbilityCooldown = 5f;
+        public float currentCooldown;
+        
         protected Rigidbody rb;
         protected Animator animator;
         protected bool isGrounded;
-
-        [Header("Special Ability")]
-        public float specialAbilityCooldown = 5f;
-        protected float currentCooldown;
-
+        protected bool isActive;
+        
         protected virtual void Awake()
         {
             rb = GetComponent<Rigidbody>();
             animator = GetComponent<Animator>();
+            currentHealth = maxHealth;
         }
-
+        
         protected virtual void Update()
         {
+            if (!isActive) return;
+            
             if (currentCooldown > 0)
                 currentCooldown -= Time.deltaTime;
-
+                
             HandleMovement();
             HandleAbilities();
         }
-
+        
         protected virtual void HandleMovement()
         {
-            float horizontal = Input.GetAxisRaw("Horizontal");
-            float vertical = Input.GetAxisRaw("Vertical");
-
-            Vector3 movement = new Vector3(horizontal, 0f, vertical).normalized;
+            Vector2 input = InputManager.Instance.MovementInput;
+            Vector3 movement = new Vector3(input.x, 0f, input.y).normalized;
             
             if (movement.magnitude > 0.1f)
             {
@@ -52,50 +57,84 @@ namespace Forever.Characters
             {
                 animator?.SetBool("IsMoving", false);
             }
-        }
-
-        protected virtual void HandleAbilities()
-        {
-            if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
+            
+            if (InputManager.Instance.JumpPressed && isGrounded)
             {
                 Jump();
             }
-
-            if (Input.GetKeyDown(KeyCode.E) && currentCooldown <= 0)
+        }
+        
+        protected virtual void HandleAbilities()
+        {
+            if (InputManager.Instance.SpecialAbilityPressed && currentCooldown <= 0)
             {
                 UseSpecialAbility();
             }
         }
-
+        
         protected virtual void Jump()
         {
             rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
             isGrounded = false;
+            animator?.SetTrigger("Jump");
         }
-
+        
+        public virtual void TakeDamage(float damage)
+        {
+            currentHealth = Mathf.Max(0, currentHealth - damage);
+            animator?.SetTrigger("Hit");
+            
+            if (currentHealth <= 0)
+            {
+                Die();
+            }
+        }
+        
+        public virtual void Heal(float amount)
+        {
+            currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
+        }
+        
+        protected virtual void Die()
+        {
+            animator?.SetTrigger("Die");
+            isActive = false;
+            // Additional death logic in derived classes
+        }
+        
         public virtual void Activate()
         {
+            isActive = true;
             gameObject.SetActive(true);
-            enabled = true;
         }
-
+        
         public virtual void Deactivate()
         {
+            isActive = false;
             gameObject.SetActive(false);
-            enabled = false;
         }
-
+        
         protected abstract void UseSpecialAbility();
-
-        private void OnCollisionEnter(Collision collision)
+        
+        protected virtual void OnCollisionEnter(Collision collision)
         {
             if (collision.gameObject.CompareTag("Ground"))
             {
                 isGrounded = true;
+                animator?.SetBool("IsGrounded", true);
+            }
+        }
+        
+        protected virtual void OnCollisionExit(Collision collision)
+        {
+            if (collision.gameObject.CompareTag("Ground"))
+            {
+                isGrounded = false;
+                animator?.SetBool("IsGrounded", false);
             }
         }
     }
-
+    
     public enum CharacterType
     {
         Anshad,  // Ingenuity

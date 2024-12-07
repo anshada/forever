@@ -1,6 +1,7 @@
 using UnityEngine;
 using System;
 using System.Collections.Generic;
+using Forever.Characters;
 
 namespace Forever.Core
 {

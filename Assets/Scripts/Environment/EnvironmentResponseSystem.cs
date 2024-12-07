@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Forever.VFX;
 using Forever.AI;
 using Forever.Core;
+using Forever.Rendering;
+using Forever.Audio;
 
 namespace Forever.Environment
 {

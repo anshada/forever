@@ -7,58 +7,30 @@ namespace Forever.Rendering
     {
         public static ShaderManager Instance { get; private set; }
 
-        [System.Serializable]
-        public class ShaderProperties
-        {
-            public string propertyName;
-            public ShaderPropertyType propertyType;
-            public float floatValue;
-            public Color colorValue;
-            public Vector4 vectorValue;
-            public Texture textureValue;
-        }
-
-        [System.Serializable]
-        public class MaterialPreset
-        {
-            public string presetName;
-            public Material material;
-            public List<ShaderProperties> properties;
-        }
-
-        public enum ShaderPropertyType
-        {
-            Float,
-            Color,
-            Vector,
-            Texture
-        }
-
-        [Header("Material Presets")]
-        public List<MaterialPreset> materialPresets;
-
-        [Header("Global Properties")]
-        public float windStrength = 1f;
-        public float windSpeed = 1f;
-        public Vector4 windDirection = new Vector4(1f, 0f, 0f, 0f);
-        public float timeScale = 1f;
-
-        private Dictionary<string, MaterialPreset> presetDictionary;
-        private Dictionary<Material, List<ShaderProperties>> materialProperties;
-        private List<Material> dynamicMaterials;
-
+        [Header("Global Shader Properties")]
+        public float globalMagicIntensity = 1f;
+        public float globalWindStrength = 1f;
+        public float globalTimeScale = 1f;
+        
+        [Header("Interaction Settings")]
+        public int maxInteractionPoints = 10;
+        public float interactionDecayRate = 0.5f;
+        
+        private List<InteractionPoint> interactionPoints;
+        private int currentInteractionIndex;
+        
+        // Shader property IDs
+        private int magicIntensityID;
         private int windStrengthID;
-        private int windSpeedID;
-        private int windDirectionID;
-        private int timeID;
-        private int noiseTextureID;
-
+        private int timeScaleID;
+        private int interactionPointsID;
+        private int interactionCountID;
+        
         private void Awake()
         {
             if (Instance == null)
             {
                 Instance = this;
-                DontDestroyOnLoad(gameObject);
                 InitializeShaderSystem();
             }
             else
@@ -66,179 +38,129 @@ namespace Forever.Rendering
                 Destroy(gameObject);
             }
         }
-
+        
         private void InitializeShaderSystem()
         {
-            // Initialize collections
-            presetDictionary = new Dictionary<string, MaterialPreset>();
-            materialProperties = new Dictionary<Material, List<ShaderProperties>>();
-            dynamicMaterials = new List<Material>();
-
+            // Initialize interaction points
+            interactionPoints = new List<InteractionPoint>();
+            currentInteractionIndex = 0;
+            
             // Cache shader property IDs
-            windStrengthID = Shader.PropertyToID("_WindStrength");
-            windSpeedID = Shader.PropertyToID("_WindSpeed");
-            windDirectionID = Shader.PropertyToID("_WindDirection");
-            timeID = Shader.PropertyToID("_Time");
-            noiseTextureID = Shader.PropertyToID("_NoiseTexture");
-
-            // Register material presets
-            foreach (var preset in materialPresets)
-            {
-                RegisterMaterialPreset(preset);
-            }
-
-            // Initialize noise texture
-            GenerateNoiseTexture();
+            magicIntensityID = Shader.PropertyToID("_GlobalMagicIntensity");
+            windStrengthID = Shader.PropertyToID("_GlobalWindStrength");
+            timeScaleID = Shader.PropertyToID("_GlobalTimeScale");
+            interactionPointsID = Shader.PropertyToID("_InteractionPoints");
+            interactionCountID = Shader.PropertyToID("_InteractionPointCount");
+            
+            // Set initial global values
+            Shader.SetGlobalFloat(magicIntensityID, globalMagicIntensity);
+            Shader.SetGlobalFloat(windStrengthID, globalWindStrength);
+            Shader.SetGlobalFloat(timeScaleID, globalTimeScale);
+            Shader.SetGlobalInt(interactionCountID, 0);
         }
-
+        
         private void Update()
         {
+            UpdateInteractionPoints();
             UpdateGlobalShaderProperties();
-            UpdateDynamicMaterials();
         }
-
+        
+        private void UpdateInteractionPoints()
+        {
+            // Update decay and remove expired points
+            for (int i = interactionPoints.Count - 1; i >= 0; i--)
+            {
+                InteractionPoint point = interactionPoints[i];
+                point.intensity -= interactionDecayRate * Time.deltaTime;
+                
+                if (point.intensity <= 0)
+                {
+                    interactionPoints.RemoveAt(i);
+                }
+            }
+            
+            // Update shader array
+            Vector4[] pointsArray = new Vector4[maxInteractionPoints];
+            for (int i = 0; i < interactionPoints.Count; i++)
+            {
+                InteractionPoint point = interactionPoints[i];
+                pointsArray[i] = new Vector4(
+                    point.position.x,
+                    point.position.y,
+                    point.position.z,
+                    point.intensity
+                );
+            }
+            
+            Shader.SetGlobalVectorArray(interactionPointsID, pointsArray);
+            Shader.SetGlobalInt(interactionCountID, interactionPoints.Count);
+        }
+        
         private void UpdateGlobalShaderProperties()
         {
-            // Update global wind properties
-            Shader.SetGlobalFloat(windStrengthID, windStrength);
-            Shader.SetGlobalFloat(windSpeedID, windSpeed);
-            Shader.SetGlobalVector(windDirectionID, windDirection);
-
-            // Update time
-            float time = Time.time * timeScale;
-            Shader.SetGlobalFloat(timeID, time);
+            Shader.SetGlobalFloat(magicIntensityID, globalMagicIntensity);
+            Shader.SetGlobalFloat(windStrengthID, globalWindStrength);
+            Shader.SetGlobalFloat(timeScaleID, globalTimeScale);
         }
-
-        private void UpdateDynamicMaterials()
+        
+        public void UpdateMagicInteraction(Vector3 position, float intensity)
         {
-            foreach (var material in dynamicMaterials)
+            // Find existing point or create new one
+            InteractionPoint existingPoint = interactionPoints.Find(p => 
+                Vector3.Distance(p.position, position) < 0.1f);
+                
+            if (existingPoint != null)
             {
-                if (materialProperties.TryGetValue(material, out List<ShaderProperties> properties))
+                existingPoint.intensity = Mathf.Max(existingPoint.intensity, intensity);
+            }
+            else if (interactionPoints.Count < maxInteractionPoints)
+            {
+                interactionPoints.Add(new InteractionPoint
                 {
-                    foreach (var prop in properties)
-                    {
-                        UpdateMaterialProperty(material, prop);
-                    }
-                }
+                    position = position,
+                    intensity = intensity
+                });
             }
-        }
-
-        private void RegisterMaterialPreset(MaterialPreset preset)
-        {
-            if (!presetDictionary.ContainsKey(preset.presetName))
+            else
             {
-                presetDictionary.Add(preset.presetName, preset);
-                if (preset.material != null && !materialProperties.ContainsKey(preset.material))
+                // Replace oldest point
+                currentInteractionIndex = (currentInteractionIndex + 1) % maxInteractionPoints;
+                interactionPoints[currentInteractionIndex] = new InteractionPoint
                 {
-                    materialProperties.Add(preset.material, preset.properties);
-                    dynamicMaterials.Add(preset.material);
-                }
+                    position = position,
+                    intensity = intensity
+                };
             }
         }
-
-        public Material CreateMaterialFromPreset(string presetName)
+        
+        public void SetGlobalMagicIntensity(float intensity)
         {
-            if (presetDictionary.TryGetValue(presetName, out MaterialPreset preset))
-            {
-                Material newMaterial = new Material(preset.material);
-                materialProperties.Add(newMaterial, preset.properties);
-                dynamicMaterials.Add(newMaterial);
-                return newMaterial;
-            }
-            return null;
+            globalMagicIntensity = intensity;
         }
-
-        public void UpdateMaterialProperty(Material material, string propertyName, object value)
+        
+        public void SetGlobalWindStrength(float strength)
         {
-            if (materialProperties.TryGetValue(material, out List<ShaderProperties> properties))
-            {
-                var property = properties.Find(p => p.propertyName == propertyName);
-                if (property != null)
-                {
-                    switch (property.propertyType)
-                    {
-                        case ShaderPropertyType.Float:
-                            property.floatValue = (float)value;
-                            break;
-                        case ShaderPropertyType.Color:
-                            property.colorValue = (Color)value;
-                            break;
-                        case ShaderPropertyType.Vector:
-                            property.vectorValue = (Vector4)value;
-                            break;
-                        case ShaderPropertyType.Texture:
-                            property.textureValue = (Texture)value;
-                            break;
-                    }
-                    UpdateMaterialProperty(material, property);
-                }
-            }
+            globalWindStrength = strength;
         }
-
-        private void UpdateMaterialProperty(Material material, ShaderProperties property)
+        
+        public void SetGlobalTimeScale(float scale)
         {
-            switch (property.propertyType)
-            {
-                case ShaderPropertyType.Float:
-                    material.SetFloat(property.propertyName, property.floatValue);
-                    break;
-                case ShaderPropertyType.Color:
-                    material.SetColor(property.propertyName, property.colorValue);
-                    break;
-                case ShaderPropertyType.Vector:
-                    material.SetVector(property.propertyName, property.vectorValue);
-                    break;
-                case ShaderPropertyType.Texture:
-                    material.SetTexture(property.propertyName, property.textureValue);
-                    break;
-            }
+            globalTimeScale = scale;
         }
-
-        private void GenerateNoiseTexture()
-        {
-            int resolution = 256;
-            Texture2D noiseTexture = new Texture2D(resolution, resolution, TextureFormat.RGBA32, false);
-            noiseTexture.filterMode = FilterMode.Bilinear;
-            noiseTexture.wrapMode = TextureWrapMode.Repeat;
-
-            Color[] pixels = new Color[resolution * resolution];
-            for (int y = 0; y < resolution; y++)
-            {
-                for (int x = 0; x < resolution; x++)
-                {
-                    float noise = Mathf.PerlinNoise(x * 0.1f, y * 0.1f);
-                    pixels[y * resolution + x] = new Color(noise, noise, noise, 1f);
-                }
-            }
-
-            noiseTexture.SetPixels(pixels);
-            noiseTexture.Apply();
-
-            Shader.SetGlobalTexture(noiseTextureID, noiseTexture);
-        }
-
-        public void SetWindParameters(float strength, float speed, Vector4 direction)
-        {
-            windStrength = strength;
-            windSpeed = speed;
-            windDirection = direction;
-        }
-
-        public void SetTimeScale(float scale)
-        {
-            timeScale = scale;
-        }
-
+        
         private void OnDestroy()
         {
-            // Cleanup dynamic materials
-            foreach (var material in dynamicMaterials)
-            {
-                if (material != null)
-                {
-                    Destroy(material);
-                }
-            }
+            // Reset global shader properties
+            Shader.SetGlobalFloat(magicIntensityID, 1f);
+            Shader.SetGlobalFloat(windStrengthID, 1f);
+            Shader.SetGlobalFloat(timeScaleID, 1f);
+            Shader.SetGlobalInt(interactionCountID, 0);
         }
+    }
+    
+    public class InteractionPoint
+    {
+        public Vector3 position;
+        public float intensity;
     }
 } 

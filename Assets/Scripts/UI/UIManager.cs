@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using Forever.Core;
 using Forever.Characters;
+using Forever.Audio;
 
 namespace Forever.UI
 {
