@@ -161,8 +161,11 @@ namespace Forever.Core
 
         public void AddInventoryItem(string itemId)
         {
-            // Delegate to inventory system
-            InventorySystem.Instance?.AddItem(itemId);
+            if (InventorySystem.Instance != null)
+            {
+                var item = new InventoryItem { itemId = itemId };
+                InventorySystem.Instance.AddItem(item);
+            }
         }
 
         public void GainExperience(float amount)

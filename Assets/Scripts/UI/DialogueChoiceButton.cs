@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using TMPro;
 using Forever.Audio;
+using System;
 using System.Collections;
 
 namespace Forever.UI
@@ -28,7 +29,8 @@ namespace Forever.UI
         
         private Vector3 originalScale;
         private Coroutine currentAnimation;
-        
+        private Action onClickCallback;
+
         private void Awake()
         {
             if (button == null) button = GetComponent<Button>();
@@ -40,11 +42,11 @@ namespace Forever.UI
             // Setup button events
             button.onClick.AddListener(OnClick);
         }
-        
-        public void SetChoice(string text, bool isEnabled = true)
+
+        public void SetChoice(string text, Action onClick)
         {
             choiceText.text = text;
-            button.interactable = isEnabled;
+            onClickCallback = onClick;
             
             // Reset state
             transform.localScale = originalScale;
@@ -56,12 +58,25 @@ namespace Forever.UI
                 
             currentAnimation = StartCoroutine(FadeIn());
         }
+
+        public void SetEnabled(bool enabled)
+        {
+            button.interactable = enabled;
+
+            Color color = background.color;
+            color.a = enabled ? 1f : 0.5f;
+            background.color = color;
+
+            color = choiceText.color;
+            color.a = enabled ? 1f : 0.5f;
+            choiceText.color = color;
+        }
         
         public void OnPointerEnter(PointerEventData eventData)
         {
             if (!button.interactable) return;
             
-            AudioManager.Instance.PlayUISound(UISoundType.ButtonHover);
+            AudioManager.Instance?.PlaySound(UISoundType.ButtonHover.ToString());
             
             if (currentAnimation != null)
                 StopCoroutine(currentAnimation);
@@ -83,7 +98,7 @@ namespace Forever.UI
         {
             if (!button.interactable) return;
             
-            AudioManager.Instance.PlayUISound(UISoundType.ButtonHover);
+            AudioManager.Instance?.PlaySound(UISoundType.ButtonHover.ToString());
             
             if (currentAnimation != null)
                 StopCoroutine(currentAnimation);
@@ -100,12 +115,13 @@ namespace Forever.UI
                 
             currentAnimation = StartCoroutine(ScaleTo(originalScale, hoverDuration));
         }
-        
+
         private void OnClick()
         {
             if (!button.interactable) return;
             
-            AudioManager.Instance.PlayUISound(UISoundType.ButtonClick);
+            AudioManager.Instance?.PlaySound(UISoundType.ButtonClick.ToString());
+            onClickCallback?.Invoke();
             
             if (currentAnimation != null)
                 StopCoroutine(currentAnimation);

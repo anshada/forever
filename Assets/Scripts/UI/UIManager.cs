@@ -4,10 +4,7 @@ using TMPro;
 using System;
 using System.Collections;
 using Forever.Core;
-using Forever.Characters;
 using Forever.Audio;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Forever.UI
 {
@@ -15,333 +12,82 @@ namespace Forever.UI
     {
         public static UIManager Instance { get; private set; }
 
-        [Header("UI Panels")]
-        public GameObject mainMenuPanel;
-        public GameObject hudPanel;
-        public GameObject pausePanel;
-        public GameObject inventoryPanel;
-        public GameObject questPanel;
-        public GameObject dialoguePanel;
-        public GameObject characterPanel;
-        public GameObject settingsPanel;
-        public GameObject mapPanel;
-        
-        [Header("HUD Elements")]
-        public HealthBar[] characterHealthBars;
-        public Image magicEnergyBar;
-        public TextMeshProUGUI currentObjectiveText;
-        public GameObject interactionPrompt;
-        public GameObject notificationPanel;
-        public Image weatherIndicator;
-        public Image compassIndicator;
-        
-        [Header("Dialogue UI")]
-        public TextMeshProUGUI dialogueText;
-        public TextMeshProUGUI speakerNameText;
-        public GameObject choicesContainer;
-        public DialogueChoiceButton dialogueChoiceButtonPrefab;
-        public Image speakerPortrait;
-        public Image listenerPortrait;
-        
-        [Header("Quest UI")]
-        public QuestLogEntry questEntryPrefab;
-        public Transform questLogContent;
-        public GameObject questNotificationPrefab;
-        public Transform questNotificationAnchor;
-        
-        [Header("Animation")]
-        public float fadeSpeed = 1f;
-        public float notificationDuration = 3f;
-        public AnimationCurve notificationCurve;
-        
         [Header("Notification Settings")]
+        public GameObject notificationPanel;
         public TextMeshProUGUI notificationText;
+        public float notificationDuration = 3f;
         public bool notificationAutoHide = true;
-        
+        public AnimationCurve notificationCurve;
+
         [Header("Dialogue UI")]
+        public GameObject dialoguePanel;
         public Transform dialogueChoicesContainer;
         public DialogueChoiceButton dialogueChoicePrefab;
-        
-        private GameManager gameManager;
-        private QuestSystem questSystem;
+
+        [Header("Quest UI")]
+        public Transform questLogContent;
+        public GameObject questEntryPrefab;
+
         private DialogueSystem dialogueSystem;
-        private InventorySystem inventorySystem;
+        private QuestSystem questSystem;
         private AudioManager audioManager;
-        
-        private CanvasGroup mainCanvasGroup;
-        private Coroutine typingCoroutine;
-        private bool isTyping;
-        
+
         private void Awake()
         {
             if (Instance == null)
             {
                 Instance = this;
-                InitializeUI();
+                DontDestroyOnLoad(gameObject);
             }
             else
             {
                 Destroy(gameObject);
             }
         }
-        
-        private void InitializeUI()
+
+        private void Start()
         {
-            mainCanvasGroup = GetComponent<CanvasGroup>();
-            
-            // Get system references
-            gameManager = FindObjectOfType<GameManager>();
-            questSystem = FindObjectOfType<QuestSystem>();
-            dialogueSystem = FindObjectOfType<DialogueSystem>();
-            inventorySystem = FindObjectOfType<InventorySystem>();
-            audioManager = FindObjectOfType<AudioManager>();
-            
-            // Initialize all panels
-            InitializePanels();
-            
-            // Subscribe to events
-            SubscribeToEvents();
-        }
-        
-        private void InitializePanels()
-        {
-            // Set initial panel states
-            ShowPanel(mainMenuPanel, true);
-            ShowPanel(hudPanel, false);
-            ShowPanel(pausePanel, false);
-            ShowPanel(inventoryPanel, false);
-            ShowPanel(questPanel, false);
-            ShowPanel(dialoguePanel, false);
-            ShowPanel(characterPanel, false);
-            ShowPanel(settingsPanel, false);
-            ShowPanel(mapPanel, false);
-            
-            // Initialize HUD elements
-            UpdateHealthBars();
-            UpdateMagicEnergy(1f);
-            SetCurrentObjective("");
-            ShowInteractionPrompt(false);
-        }
-        
-        private void SubscribeToEvents()
-        {
-            if (gameManager != null)
-            {
-                gameManager.OnGameStateChanged += HandleGameStateChanged;
-            }
-            
+            dialogueSystem = DialogueSystem.Instance;
+            questSystem = QuestSystem.Instance;
+            audioManager = AudioManager.Instance;
+
             if (questSystem != null)
             {
                 questSystem.OnQuestStarted += HandleQuestStarted;
                 questSystem.OnQuestCompleted += HandleQuestCompleted;
                 questSystem.OnQuestProgress += HandleQuestProgress;
             }
-            
+
             if (dialogueSystem != null)
             {
                 dialogueSystem.OnDialogueNodeStart += HandleDialogueNodeStart;
                 dialogueSystem.OnDialogueNodeEnd += HandleDialogueNodeEnd;
-                dialogueSystem.OnDialogueChoice += HandleDialogueChoice;
+                dialogueSystem.OnDialogueChoice += HandleDialogueChoiceSelected;
             }
         }
-        
-        private void HandleGameStateChanged(GameState newState)
+
+        private void OnDestroy()
         {
-            switch (newState)
+            if (Instance == this)
             {
-                case GameState.MainMenu:
-                    ShowMainMenu();
-                    break;
-                case GameState.Playing:
-                    ShowGameUI();
-                    break;
-                case GameState.Paused:
-                    ShowPauseMenu();
-                    break;
-                case GameState.Cutscene:
-                    ShowCutsceneUI();
-                    break;
+                Instance = null;
             }
-        }
-        
-        public void ShowMainMenu()
-        {
-            ShowPanel(mainMenuPanel, true);
-            ShowPanel(hudPanel, false);
-            ShowPanel(pausePanel, false);
-        }
-        
-        public void ShowGameUI()
-        {
-            ShowPanel(mainMenuPanel, false);
-            ShowPanel(hudPanel, true);
-            ShowPanel(pausePanel, false);
-        }
-        
-        public void ShowPauseMenu()
-        {
-            ShowPanel(pausePanel, true);
-        }
-        
-        public void ShowCutsceneUI()
-        {
-            ShowPanel(hudPanel, false);
-            // Show any cutscene-specific UI elements
-        }
-        
-        private void ShowPanel(GameObject panel, bool show)
-        {
-            if (panel == null) return;
-            
-            CanvasGroup canvasGroup = panel.GetComponent<CanvasGroup>();
-            if (canvasGroup != null)
+
+            if (questSystem != null)
             {
-                StartCoroutine(FadePanel(canvasGroup, show ? 1f : 0f));
+                questSystem.OnQuestStarted -= HandleQuestStarted;
+                questSystem.OnQuestCompleted -= HandleQuestCompleted;
+                questSystem.OnQuestProgress -= HandleQuestProgress;
             }
-            else
+
+            if (dialogueSystem != null)
             {
-                panel.SetActive(show);
+                dialogueSystem.OnDialogueNodeStart -= HandleDialogueNodeStart;
+                dialogueSystem.OnDialogueNodeEnd -= HandleDialogueNodeEnd;
+                dialogueSystem.OnDialogueChoice -= HandleDialogueChoiceSelected;
             }
         }
-        
-        private IEnumerator FadePanel(CanvasGroup canvasGroup, float targetAlpha)
-        {
-            canvasGroup.interactable = targetAlpha > 0;
-            canvasGroup.blocksRaycasts = targetAlpha > 0;
-            
-            float startAlpha = canvasGroup.alpha;
-            float elapsed = 0f;
-            
-            while (elapsed < fadeSpeed)
-            {
-                elapsed += Time.deltaTime;
-                canvasGroup.alpha = Mathf.Lerp(startAlpha, targetAlpha, elapsed / fadeSpeed);
-                yield return null;
-            }
-            
-            canvasGroup.alpha = targetAlpha;
-        }
-        
-        #region HUD Updates
-        
-        public void UpdateHealthBars()
-        {
-            if (characterHealthBars == null) return;
-            
-            foreach (var healthBar in characterHealthBars)
-            {
-                if (healthBar.character != null)
-                {
-                    healthBar.UpdateHealth(healthBar.character.currentHealth / healthBar.character.maxHealth);
-                }
-            }
-        }
-        
-        public void UpdateMagicEnergy(float normalizedValue)
-        {
-            if (magicEnergyBar != null)
-            {
-                magicEnergyBar.fillAmount = normalizedValue;
-            }
-        }
-        
-        public void SetCurrentObjective(string objective)
-        {
-            if (currentObjectiveText != null)
-            {
-                currentObjectiveText.text = objective;
-            }
-        }
-        
-        public void ShowInteractionPrompt(bool show, string promptText = "")
-        {
-            if (interactionPrompt != null)
-            {
-                interactionPrompt.SetActive(show);
-                if (show && !string.IsNullOrEmpty(promptText))
-                {
-                    interactionPrompt.GetComponentInChildren<TextMeshProUGUI>().text = promptText;
-                }
-            }
-        }
-        
-        #endregion
-        
-        #region Dialogue UI
-        
-        public void ShowDialoguePanel(bool show)
-        {
-            ShowPanel(dialoguePanel, show);
-        }
-        
-        public void UpdateDialogueText(string text)
-        {
-            if (dialogueText != null)
-            {
-                dialogueText.text = text;
-            }
-        }
-        
-        public void ShowDialogueChoices(DialogueChoice[] choices)
-        {
-            if (choicesContainer == null || dialogueChoiceButtonPrefab == null) return;
-            
-            // Clear existing choices
-            foreach (Transform child in choicesContainer.transform)
-            {
-                Destroy(child.gameObject);
-            }
-            
-            // Create new choice buttons
-            for (int i = 0; i < choices.Length; i++)
-            {
-                DialogueChoiceButton button = Instantiate(dialogueChoiceButtonPrefab, choicesContainer.transform);
-                button.SetChoice(choices[i], i);
-            }
-            
-            choicesContainer.SetActive(true);
-        }
-        
-        #endregion
-        
-        #region Quest UI
-        
-        public void ShowQuestStarted(Quest quest)
-        {
-            ShowNotification($"New Quest: {quest.questName}", NotificationType.Quest);
-            UpdateQuestLog();
-        }
-        
-        public void ShowQuestCompleted(Quest quest)
-        {
-            ShowNotification($"Quest Completed: {quest.questName}", NotificationType.Achievement);
-            UpdateQuestLog();
-        }
-        
-        private void UpdateQuestLog()
-        {
-            if (questLogContent == null || questEntryPrefab == null || questSystem == null) return;
-            
-            // Clear existing entries
-            foreach (Transform child in questLogContent)
-            {
-                Destroy(child.gameObject);
-            }
-            
-            // Add active quests
-            var activeQuests = questSystem.GetActiveQuests();
-            foreach (var quest in activeQuests)
-            {
-                var entry = Instantiate(questEntryPrefab, questLogContent);
-                float progress = questSystem.GetQuestState(quest.questId)?.objectives.Values.Average() ?? 0f;
-                entry.SetQuestInfo(quest.questName, quest.description, progress);
-            }
-        }
-        
-        #endregion
-        
-        #region Notifications
-        
+
         public void ShowNotification(string message, NotificationType type)
         {
             if (notificationPanel != null)
@@ -359,7 +105,106 @@ namespace Forever.UI
                 PlayNotificationSound(type);
             }
         }
-        
+
+        private void HandleQuestStarted(Quest quest)
+        {
+            ShowNotification($"New Quest: {quest.title}", NotificationType.Info);
+            UpdateQuestLog();
+        }
+
+        private void HandleQuestCompleted(Quest quest)
+        {
+            ShowNotification($"Quest Completed: {quest.title}", NotificationType.Success);
+            UpdateQuestLog();
+        }
+
+        private void HandleQuestProgress(Quest quest, float progress)
+        {
+            ShowNotification($"Quest Progress: {progress:P0}", NotificationType.Info);
+            UpdateQuestLog();
+        }
+
+        private void UpdateQuestLog()
+        {
+            if (questLogContent != null && questEntryPrefab != null)
+            {
+                // Clear existing entries
+                foreach (Transform child in questLogContent)
+                {
+                    Destroy(child.gameObject);
+                }
+
+                // Add new entries
+                var quests = questSystem.GetActiveQuests();
+                foreach (var quest in quests)
+                {
+                    var entry = Instantiate(questEntryPrefab, questLogContent).GetComponent<QuestLogEntry>();
+                    if (entry != null)
+                    {
+                        entry.SetQuestInfo(quest.title, quest.description, quest.currentProgress);
+                    }
+                }
+            }
+        }
+
+        private void HandleDialogueNodeStart(DialogueNode node)
+        {
+            if (dialoguePanel != null)
+            {
+                dialoguePanel.SetActive(true);
+            }
+        }
+
+        private void HandleDialogueNodeEnd(DialogueNode node)
+        {
+            if (dialoguePanel != null)
+            {
+                dialoguePanel.SetActive(false);
+                // Hide all choice buttons
+                foreach (Transform child in dialogueChoicesContainer)
+                {
+                    var button = child.GetComponent<DialogueChoiceButton>();
+                    if (button != null)
+                    {
+                        button.Hide();
+                    }
+                }
+            }
+        }
+
+        private void HandleDialogueChoiceSelected(string choice)
+        {
+            audioManager?.PlaySound(UISoundType.DialogueChoice.ToString());
+        }
+
+        public void ShowDialogueChoices(DialogueChoice[] choices)
+        {
+            if (dialogueChoicesContainer != null)
+            {
+                // Clear existing choices
+                foreach (Transform child in dialogueChoicesContainer)
+                {
+                    Destroy(child.gameObject);
+                }
+
+                // Add new choices
+                foreach (var choice in choices)
+                {
+                    ShowDialogueChoice(choice);
+                }
+            }
+        }
+
+        private void ShowDialogueChoice(DialogueChoice choice)
+        {
+            if (choice != null && dialogueChoicePrefab != null && dialogueChoicesContainer != null)
+            {
+                var button = Instantiate(dialogueChoicePrefab, dialogueChoicesContainer);
+                button.SetChoice(choice.text, () => dialogueSystem.HandleChoice(choice.text));
+                button.SetEnabled(dialogueSystem.CheckCondition(choice.condition));
+            }
+        }
+
         private void SetNotificationStyle(NotificationType type)
         {
             Color color = type switch
@@ -396,77 +241,6 @@ namespace Forever.UI
                 notificationPanel.SetActive(false);
             }
         }
-        
-        #endregion
-        
-        private void HandleQuestStarted(Quest quest)
-        {
-            if (quest != null)
-            {
-                ShowQuestNotification($"New Quest: {quest.questName}");
-                UpdateQuestLog();
-            }
-        }
-
-        private void HandleQuestCompleted(Quest quest)
-        {
-            if (quest != null)
-            {
-                ShowQuestNotification($"Quest Completed: {quest.questName}");
-                UpdateQuestLog();
-            }
-        }
-
-        private void HandleQuestProgress(Quest quest, float progress)
-        {
-            UpdateQuestLog();
-            if (progress >= 1f)
-            {
-                AudioManager.Instance?.PlayUISound(UISoundType.ObjectiveComplete);
-            }
-        }
-
-        private void HandleDialogueNodeStart(DialogueNode node)
-        {
-            if (node != null)
-            {
-                ShowDialoguePanel(true);
-                UpdateDialogueText(node.text);
-                AudioManager.Instance?.PlayUISound(UISoundType.DialogueStart);
-            }
-        }
-
-        private void HandleDialogueNodeEnd(DialogueNode node)
-        {
-            ShowDialoguePanel(false);
-            AudioManager.Instance?.PlayUISound(UISoundType.DialogueEnd);
-        }
-
-        private void HandleDialogueChoice(DialogueChoice choice)
-        {
-            if (choice != null)
-            {
-                dialogueSystem.SelectChoice(choice);
-                PlayUISound(UISoundType.DialogueChoice);
-            }
-        }
-
-        public void ShowDialogueUI(bool show)
-        {
-            ShowPanel(dialoguePanel, show);
-        }
-
-        public void ShowDialogueText(string text, string speakerName)
-        {
-            if (dialogueText != null)
-            {
-                dialogueText.text = text;
-            }
-            if (speakerNameText != null)
-            {
-                speakerNameText.text = speakerName;
-            }
-        }
 
         public void ShowEventNotification(string eventId)
         {
@@ -475,7 +249,7 @@ namespace Forever.UI
 
         public void ShowEventCompletion(string eventId)
         {
-            ShowNotification($"Event Completed: {eventId}", NotificationType.Achievement);
+            ShowNotification($"Event Completed: {eventId}", NotificationType.Success);
         }
 
         public void ShowEventFailure(string eventId)
@@ -483,28 +257,7 @@ namespace Forever.UI
             ShowNotification($"Event Failed: {eventId}", NotificationType.Error);
         }
     }
-    
-    [System.Serializable]
-    public class HealthBar
-    {
-        public Character character;
-        public Image fillImage;
-        public TextMeshProUGUI valueText;
-        
-        public void UpdateHealth(float normalizedValue)
-        {
-            if (fillImage != null)
-            {
-                fillImage.fillAmount = normalizedValue;
-            }
-            
-            if (valueText != null)
-            {
-                valueText.text = $"{Mathf.RoundToInt(normalizedValue * 100)}%";
-            }
-        }
-    }
-    
+
     public enum NotificationType
     {
         Info,

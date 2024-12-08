@@ -7,8 +7,27 @@ namespace Forever.Core
 {
     public class DialogueSystem : MonoBehaviour
     {
+        public static DialogueSystem Instance { get; private set; }
+
         private DialogueNode currentNode;
         private AudioManager audioManager;
+
+        public event Action<DialogueNode> OnDialogueNodeStart;
+        public event Action<DialogueNode> OnDialogueNodeEnd;
+        public event Action<string> OnDialogueChoice;
+
+        private void Awake()
+        {
+            if (Instance == null)
+            {
+                Instance = this;
+                DontDestroyOnLoad(gameObject);
+            }
+            else
+            {
+                Destroy(gameObject);
+            }
+        }
 
         private void Start()
         {
@@ -19,7 +38,7 @@ namespace Forever.Core
         {
             if (clip != null && audioManager != null)
             {
-                audioManager.PlaySound("Dialogue", clip);
+                audioManager.PlaySound(clip.name);
             }
         }
 
@@ -31,11 +50,12 @@ namespace Forever.Core
                 if (choice != null)
                 {
                     SelectChoice(choice);
+                    OnDialogueChoice?.Invoke(choiceText);
                 }
             }
         }
 
-        private void SelectChoice(DialogueChoice choice)
+        public void SelectChoice(DialogueChoice choice)
         {
             if (choice != null)
             {
@@ -70,7 +90,10 @@ namespace Forever.Core
                     GameManager.Instance?.AddInventoryItem(action.parameter);
                     break;
                 case DialogueActionType.StartQuest:
-                    QuestSystem.Instance?.StartQuest(action.parameter);
+                    if (QuestSystem.Instance != null)
+                    {
+                        QuestSystem.Instance.StartQuest(action.parameter);
+                    }
                     break;
                 case DialogueActionType.ChangeRelationship:
                     GameManager.Instance?.UpdateRelationship(action.parameter);
@@ -88,10 +111,44 @@ namespace Forever.Core
         {
             if (currentNode != null)
             {
+                OnDialogueNodeStart?.Invoke(currentNode);
                 // Display dialogue text
                 // Update UI
                 // Show choices
             }
+        }
+
+        public bool CheckCondition(string condition)
+        {
+            if (string.IsNullOrEmpty(condition))
+                return true;
+
+            // Check game flags
+            if (condition.StartsWith("flag:"))
+            {
+                string flagName = condition.Substring(5);
+                return GameManager.Instance?.GetGameFlag(flagName) ?? false;
+            }
+
+            // Check quest completion
+            if (condition.StartsWith("quest:"))
+            {
+                string questId = condition.Substring(6);
+                var quest = QuestSystem.Instance?.GetQuestState(questId);
+                return quest != null && quest.currentProgress >= 1f;
+            }
+
+            // Check player level
+            if (condition.StartsWith("level:"))
+            {
+                if (int.TryParse(condition.Substring(6), out int requiredLevel))
+                {
+                    return GameManager.Instance?.playerLevel >= requiredLevel;
+                }
+            }
+
+            // Default to true if condition type is unknown
+            return true;
         }
     }
 

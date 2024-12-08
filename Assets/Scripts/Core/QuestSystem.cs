@@ -1,18 +1,53 @@
 using UnityEngine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Forever.Core
 {
     public class QuestSystem : MonoBehaviour
     {
+        public static QuestSystem Instance { get; private set; }
+
         private Dictionary<string, Quest> activeQuests = new Dictionary<string, Quest>();
         private SaveSystem saveSystem;
+
+        public event Action<Quest> OnQuestStarted;
+        public event Action<Quest> OnQuestCompleted;
+        public event Action<Quest, float> OnQuestProgress;
+
+        private void Awake()
+        {
+            if (Instance == null)
+            {
+                Instance = this;
+                DontDestroyOnLoad(gameObject);
+            }
+            else
+            {
+                Destroy(gameObject);
+            }
+        }
 
         private void Start()
         {
             saveSystem = SaveSystem.Instance;
             LoadQuestProgress();
+        }
+
+        public void StartQuest(string questId)
+        {
+            if (!activeQuests.ContainsKey(questId))
+            {
+                var quest = new Quest
+                {
+                    questId = questId,
+                    currentProgress = 0f
+                };
+                activeQuests.Add(questId, quest);
+                OnQuestStarted?.Invoke(quest);
+                SaveQuestProgress();
+            }
         }
 
         public void UpdateQuestProgress(string questId)
@@ -29,6 +64,8 @@ namespace Forever.Core
             {
                 quest.currentProgress = Mathf.Clamp01(progress);
                 quest.currentObjective = objectiveId;
+
+                OnQuestProgress?.Invoke(quest, quest.currentProgress);
 
                 // Check for quest completion
                 if (quest.currentProgress >= 1f)
@@ -53,10 +90,22 @@ namespace Forever.Core
                     }
                 }
 
+                OnQuestCompleted?.Invoke(quest);
+
                 // Remove from active quests
                 activeQuests.Remove(questId);
                 SaveQuestProgress();
             }
+        }
+
+        public List<Quest> GetActiveQuests()
+        {
+            return activeQuests.Values.ToList();
+        }
+
+        public Quest GetQuestState(string questId)
+        {
+            return activeQuests.TryGetValue(questId, out Quest quest) ? quest : null;
         }
 
         private void AwardQuestReward(QuestReward reward)
@@ -105,6 +154,9 @@ namespace Forever.Core
         public string currentObjective;
         public float currentProgress;
         public QuestReward[] rewards;
+
+        // Property to maintain compatibility
+        public string questName => title;
     }
 
     [System.Serializable]
